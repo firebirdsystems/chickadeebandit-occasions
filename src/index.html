@@ -1,0 +1,519 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Occasions</title>
+  <style>
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+    :root {
+      --bg: var(--hub-bg, #f9fafb);
+      --surface: var(--hub-surface, #ffffff);
+      --border: var(--hub-border, #e5e7eb);
+      --border-mid: var(--hub-border, #d1d5db);
+      --text: var(--hub-text, #111827);
+      --muted: var(--hub-text-muted, #6b7280);
+      --accent: var(--hub-primary, #111827);
+      --accent-hover: var(--hub-primary-hover, #374151);
+      --accent-fg: var(--hub-primary-fg, #ffffff);
+      --radius: var(--hub-radius, 10px);
+      --green: #047857;
+      --green-soft: #d1fae5;
+      --amber: #b45309;
+      --amber-soft: #fef3c7;
+      --red: #b91c1c;
+      --red-soft: #fee2e2;
+      --blue: #1d4ed8;
+      --blue-soft: #dbeafe;
+      --shadow: 0 1px 3px rgba(15, 23, 42, .07);
+    }
+    body {
+      min-height: 100vh; background: var(--bg); color: var(--text);
+      font-family: var(--hub-font, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif);
+      font-size: var(--hub-font-size, 15px); line-height: 1.5;
+    }
+    .app { max-width: 720px; margin: 0 auto; padding: 16px; }
+    .topbar { display: flex; align-items: flex-start; justify-content: space-between; gap: 12px; margin-bottom: 14px; }
+    h1 { font-size: 1.35rem; line-height: 1.2; }
+    h2 { font-size: .95rem; margin-bottom: 10px; }
+    .muted { color: var(--muted); }
+    .tiny { font-size: .78rem; }
+    .stack { display: grid; gap: 10px; }
+    .btn {
+      display: inline-flex; align-items: center; justify-content: center; gap: 6px;
+      border: 1px solid transparent; border-radius: 8px; padding: 8px 12px;
+      font: inherit; font-size: .86rem; font-weight: 700; cursor: pointer;
+      min-height: 38px; background: var(--accent); color: var(--accent-fg);
+    }
+    .btn:hover { background: var(--accent-hover); }
+    .btn:disabled { opacity: .48; cursor: default; }
+    .btn-ghost { background: transparent; color: var(--text); border-color: var(--border-mid); }
+    .btn-ghost:hover { background: rgba(127,127,127,.08); }
+    .btn-danger { background: var(--red-soft); color: var(--red); border-color: transparent; }
+    .btn-danger:hover { background: #fecaca; }
+    .btn-sm { min-height: 31px; padding: 5px 10px; font-size: .78rem; }
+
+    .card {
+      background: var(--surface); border: 1px solid var(--border);
+      border-radius: var(--radius); box-shadow: var(--shadow); padding: 14px;
+    }
+    .occ {
+      display: flex; align-items: center; gap: 12px; padding: 11px 12px;
+      background: var(--surface); border: 1px solid var(--border);
+      border-radius: var(--radius); box-shadow: var(--shadow);
+    }
+    .occ-emoji {
+      width: 40px; height: 40px; flex-shrink: 0; border-radius: 50%;
+      display: inline-flex; align-items: center; justify-content: center;
+      font-size: 1.25rem; background: var(--bg); border: 1px solid var(--border);
+    }
+    .occ-body { flex: 1; min-width: 0; }
+    .occ-title { font-weight: 750; display: flex; align-items: center; gap: 6px; flex-wrap: wrap; }
+    .occ-meta { color: var(--muted); font-size: .82rem; margin-top: 1px; }
+    .occ-note { color: var(--muted); font-size: .8rem; margin-top: 3px; }
+    .occ-side { text-align: right; flex-shrink: 0; display: grid; gap: 4px; justify-items: end; }
+    .lock { font-size: .74rem; color: var(--muted); }
+    .pill {
+      display: inline-flex; align-items: center; justify-content: center;
+      min-height: 22px; padding: 1px 9px; border-radius: 999px; white-space: nowrap;
+      background: #f1f5f9; color: var(--muted); font-size: .74rem; font-weight: 800;
+    }
+    .pill.soon { background: var(--red-soft); color: var(--red); }
+    .pill.week { background: var(--amber-soft); color: var(--amber); }
+    .pill.later { background: var(--blue-soft); color: var(--blue); }
+    .row-actions { display: flex; gap: 6px; }
+    .edit-link { background: none; border: 0; color: var(--muted); cursor: pointer; font-size: .76rem; font-weight: 700; padding: 2px 4px; }
+    .edit-link:hover { color: var(--text); text-decoration: underline; }
+
+    .section-head { display: flex; align-items: center; justify-content: space-between; gap: 10px; margin: 18px 2px 8px; }
+    .section-head:first-of-type { margin-top: 6px; }
+    .suggest { display: flex; align-items: center; gap: 10px; padding: 9px 12px; border: 1px dashed var(--border-mid); border-radius: var(--radius); }
+    .suggest .occ-body { font-size: .88rem; }
+
+    .empty { color: var(--muted); text-align: center; padding: 34px 16px; }
+    .error { background: var(--red-soft); color: var(--red); padding: 9px 12px; border-radius: 8px; margin-bottom: 10px; font-size: .86rem; }
+    .notice { background: var(--green-soft); color: var(--green); padding: 9px 12px; border-radius: 8px; margin-bottom: 10px; font-size: .86rem; }
+
+    .overlay { position: fixed; inset: 0; background: rgba(0,0,0,.42); z-index: 100; display: flex; align-items: center; justify-content: center; padding: 16px; }
+    .modal { background: var(--surface); border-radius: 14px; padding: 22px; width: 100%; max-width: 460px; box-shadow: 0 20px 60px rgba(0,0,0,.25); max-height: 92vh; overflow-y: auto; }
+    .modal h2 { font-size: 1.05rem; margin-bottom: 16px; }
+    .form { display: grid; gap: 12px; }
+    .field { display: grid; gap: 5px; }
+    .grid2 { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; }
+    label { font-size: .74rem; text-transform: uppercase; letter-spacing: .05em; color: var(--muted); font-weight: 800; }
+    input, select, textarea {
+      width: 100%; border: 1.5px solid var(--border-mid); border-radius: 8px;
+      padding: 9px 11px; font: inherit; background: var(--surface); color: var(--text);
+    }
+    textarea { min-height: 60px; resize: vertical; }
+    input:focus, select:focus, textarea:focus { outline: none; border-color: var(--accent); }
+    .checkrow { display: flex; align-items: center; gap: 8px; }
+    .checkrow input { width: auto; }
+    .checkrow label { text-transform: none; letter-spacing: 0; font-weight: 600; font-size: .86rem; color: var(--text); }
+    .modal-actions { display: flex; gap: 8px; margin-top: 6px; justify-content: flex-end; align-items: center; }
+    .modal-left { margin-right: auto; }
+    @media (max-width: 520px) {
+      .occ-side { align-self: flex-start; }
+      .grid2 { grid-template-columns: 1fr; }
+    }
+  </style>
+  <base href="/run/occasions/">
+</head>
+<body>
+<div class="app">
+  <div id="root" class="empty">Loading…</div>
+</div>
+
+<script type="module">
+import { esc, isAdult, hubConfirm } from "/hub-sdk.js";
+import {
+  KINDS, kindMeta, upcoming, countdownLabel, contactSuggestions, daysInMonth,
+} from "./logic.js";
+
+const CONTEXT = window.__CONTEXT_URL ?? "";
+const DB = window.__DB_URL ?? "";
+const HUB_MEMBER = window.__CURRENT_MEMBER ?? null;
+
+let members = [];
+let memberMap = new Map();
+let me = null;
+let occasions = [];
+let contactDates = [];
+let error = "";
+let notice = "";
+let modalEl = null;
+
+function nowIso() { return new Date().toISOString(); }
+function memberName(id) { return memberMap.get(id)?.name ?? "Someone"; }
+
+/* ── DB helper ─────────────────────────────────────────────────────────────── */
+async function db(sql, params = []) {
+  if (!DB) return { rows: [] };
+  const res = await fetch(DB, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ sql, params }),
+  });
+  const json = await res.json();
+  if (json.error) throw new Error(json.error);
+  return json;
+}
+
+/* ── Loading ───────────────────────────────────────────────────────────────── */
+async function loadMembers() {
+  if (!CONTEXT) {
+    members = [
+      { id: "demo-1", name: "Alex", role: "adult" },
+      { id: "demo-2", name: "Jordan", role: "adult" },
+      { id: "demo-3", name: "Casey", role: "child" },
+    ];
+  } else {
+    try {
+      const res = await fetch(`${CONTEXT}?keys=family.members`);
+      members = ((await res.json())["family.members"]) ?? [];
+    } catch { members = []; }
+  }
+  memberMap = new Map(members.map((m) => [m.id, m]));
+  me = HUB_MEMBER ?? members[0] ?? { id: "guest", name: "Guest", role: "adult" };
+}
+
+async function loadContactDates() {
+  contactDates = [];
+  if (!CONTEXT) {
+    contactDates = [{ id: "c-sue", name: "Aunt Sue", birthday: "1958-09-14", anniversary: "" }];
+    return;
+  }
+  try {
+    const res = await fetch(`${CONTEXT}?keys=app.contacts.contact_dates`);
+    const val = (await res.json())["app.contacts.contact_dates"];
+    if (Array.isArray(val)) contactDates = val;
+  } catch { /* contacts app may not be installed — non-fatal */ }
+}
+
+async function loadOccasions() {
+  if (!DB) {
+    const soon = new Date();
+    occasions = [
+      { id: "d1", member_id: "demo-1", kind: "birthday", title: "Mom", event_month: soon.getMonth() + 1, event_day: Math.min(soon.getDate() + 3, 28), event_year: 1959, visibility: "everyone", notes: "", gift_idea: "Gardening gloves", lead_days: 3, source: "manual", source_ref: "", created_at: nowIso(), updated_at: nowIso() },
+      { id: "d2", member_id: "demo-2", kind: "anniversary", title: "Our Anniversary", event_month: 6, event_day: 21, event_year: 2010, visibility: "everyone", notes: "", gift_idea: "", lead_days: 7, source: "manual", source_ref: "", created_at: nowIso(), updated_at: nowIso() },
+      { id: "d3", member_id: "demo-1", kind: "holiday", title: "Diwali", event_month: 11, event_day: 1, event_year: null, visibility: "everyone", notes: "", gift_idea: "", lead_days: 3, source: "manual", source_ref: "", created_at: nowIso(), updated_at: nowIso() },
+    ];
+    return;
+  }
+  const res = await db(
+    "SELECT id, member_id, kind, title, event_month, event_day, event_year, visibility, notes, gift_idea, lead_days, source, source_ref, created_at, updated_at FROM app_occasions__occasions",
+  );
+  occasions = res.rows ?? [];
+}
+
+async function refresh() {
+  clearMessages();
+  try {
+    await Promise.all([loadMembers(), loadOccasions(), loadContactDates()]);
+    render();
+  } catch (e) {
+    error = e.message;
+    render();
+  }
+}
+
+function clearMessages() { error = ""; notice = ""; }
+function showError(msg) { error = msg; notice = ""; render(); }
+function showNotice(msg) { notice = msg; error = ""; render(); }
+
+/* ── Mutations ─────────────────────────────────────────────────────────────── */
+async function saveOccasion(fields, existingId) {
+  const now = nowIso();
+  if (existingId) {
+    const idx = occasions.findIndex((o) => o.id === existingId);
+    const prev = idx !== -1 ? occasions[idx] : null;
+    if (idx !== -1) occasions[idx] = { ...occasions[idx], ...fields, updated_at: now };
+    closeModal();
+    render();
+    try {
+      await db(
+        `UPDATE app_occasions__occasions
+         SET kind=?, title=?, event_month=?, event_day=?, event_year=?, visibility=?, notes=?, gift_idea=?, lead_days=?, updated_at=?
+         WHERE id=?`,
+        [fields.kind, fields.title, fields.event_month, fields.event_day, fields.event_year, fields.visibility, fields.notes, fields.gift_idea, fields.lead_days, now, existingId],
+      );
+    } catch (e) {
+      if (idx !== -1 && prev) occasions[idx] = prev;
+      showError(e.message);
+    }
+  } else {
+    const row = {
+      id: crypto.randomUUID(),
+      member_id: me.id,
+      ...fields,
+      source: fields.source ?? "manual",
+      source_ref: fields.source_ref ?? "",
+      created_at: now, updated_at: now,
+    };
+    occasions = [...occasions, row];
+    closeModal();
+    render();
+    try {
+      await db(
+        `INSERT INTO app_occasions__occasions
+          (id, member_id, kind, title, event_month, event_day, event_year, visibility, notes, gift_idea, lead_days, source, source_ref, created_at, updated_at)
+         VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`,
+        [row.id, row.member_id, row.kind, row.title, row.event_month, row.event_day, row.event_year, row.visibility, row.notes, row.gift_idea, row.lead_days, row.source, row.source_ref, now, now],
+      );
+    } catch (e) {
+      occasions = occasions.filter((o) => o.id !== row.id);
+      showError(e.message);
+    }
+  }
+}
+
+async function deleteOccasion(id) {
+  const ok = await hubConfirm({ message: "Delete this occasion?", confirmLabel: "Delete", destructive: true });
+  if (!ok) return;
+  const prev = occasions;
+  occasions = occasions.filter((o) => o.id !== id);
+  closeModal();
+  render();
+  try {
+    await db("DELETE FROM app_occasions__occasions WHERE id=?", [id]);
+    showNotice("Occasion deleted.");
+  } catch (e) {
+    occasions = prev;
+    showError(e.message);
+  }
+}
+
+/* ── Rendering ─────────────────────────────────────────────────────────────── */
+function pillClass(days) {
+  if (days <= 1) return "soon";
+  if (days <= 7) return "week";
+  if (days <= 30) return "later";
+  return "";
+}
+
+function fmtDate(month, day, year) {
+  const d = new Date(2000, month - 1, Math.min(day, daysInMonth(2000, month)), 12);
+  const base = new Intl.DateTimeFormat(undefined, { month: "short", day: "numeric" }).format(d);
+  return year ? `${base}, ${year}` : base;
+}
+
+function yearsLabel(kind, years) {
+  if (years == null) return "";
+  if (kind === "birthday") return `turns ${years}`;
+  if (kind === "anniversary") return `${ordinal(years)}`;
+  if (kind === "memorial") return `${years} years`;
+  return "";
+}
+function ordinal(n) {
+  const s = ["th", "st", "nd", "rd"], v = n % 100;
+  return n + (s[(v - 20) % 10] || s[v] || s[0]);
+}
+
+function renderOccasion(o) {
+  const meta = kindMeta(o.kind);
+  const isMine = o.member_id === me?.id;
+  const canEdit = isMine || o.visibility === "everyone";
+  const yl = yearsLabel(o.kind, o._years);
+  return `
+    <div class="occ">
+      <div class="occ-emoji" aria-hidden="true">${meta.icon}</div>
+      <div class="occ-body">
+        <div class="occ-title">
+          ${esc(o.title || meta.label)}
+          ${o.visibility === "private" ? `<span class="lock" title="Only you can see this">🔒</span>` : ""}
+        </div>
+        <div class="occ-meta">
+          ${esc(fmtDate(Number(o.event_month), Number(o.event_day), o.event_year ? Number(o.event_year) : null))}
+          ${yl ? ` · ${esc(yl)}` : ""}
+          · ${esc(meta.label)}
+        </div>
+        ${o.gift_idea ? `<div class="occ-note">🎁 ${esc(o.gift_idea)}</div>` : ""}
+        ${o.notes ? `<div class="occ-note">${esc(o.notes)}</div>` : ""}
+      </div>
+      <div class="occ-side">
+        <span class="pill ${pillClass(o._days)}">${esc(countdownLabel(o._days))}</span>
+        ${canEdit ? `<button class="edit-link" data-edit="${esc(o.id)}">Edit</button>` : `<span class="tiny muted">${esc(memberName(o.member_id))}</span>`}
+      </div>
+    </div>
+  `;
+}
+
+function renderSuggestions() {
+  const suggestions = contactSuggestions(contactDates, occasions);
+  if (!suggestions.length) return "";
+  return `
+    <div class="section-head"><h2>From your contacts</h2></div>
+    <div class="stack">
+      ${suggestions.map((s) => {
+        const meta = kindMeta(s.kind);
+        return `
+          <div class="suggest">
+            <div class="occ-emoji" aria-hidden="true">${meta.icon}</div>
+            <div class="occ-body">
+              <strong>${esc(s.name)}</strong> · ${esc(meta.label)}
+              <div class="tiny muted">${esc(fmtDate(s.month, s.day, s.year))}</div>
+            </div>
+            <button class="btn btn-ghost btn-sm" data-add-suggestion="${esc(s.contactId)}:${esc(s.kind)}">Add</button>
+          </div>`;
+      }).join("")}
+    </div>
+  `;
+}
+
+function render() {
+  const root = document.getElementById("root");
+  root.className = "app-root";
+  const list = upcoming(occasions);
+  root.innerHTML = `
+    <div class="topbar">
+      <div>
+        <h1>Occasions</h1>
+        <p class="muted tiny">The dates your household doesn't want to miss.</p>
+      </div>
+      <button class="btn" data-add>+ Add</button>
+    </div>
+    ${error ? `<div class="error">${esc(error)}</div>` : ""}
+    ${notice ? `<div class="notice">${esc(notice)}</div>` : ""}
+    ${list.length
+      ? `<div class="stack">${list.map(renderOccasion).join("")}</div>`
+      : `<div class="card empty">No occasions yet. Add a birthday or anniversary, or pull one in from your contacts.</div>`}
+    ${renderSuggestions()}
+  `;
+}
+
+/* ── Add / edit modal ──────────────────────────────────────────────────────── */
+function openModal(html) {
+  closeModal();
+  modalEl = document.createElement("div");
+  modalEl.className = "overlay";
+  modalEl.innerHTML = `<div class="modal">${html}</div>`;
+  modalEl.addEventListener("click", (e) => { if (e.target === modalEl) closeModal(); });
+  document.body.appendChild(modalEl);
+}
+function closeModal() { modalEl?.remove(); modalEl = null; }
+
+function isoForInput(o) {
+  if (!o) return "";
+  const y = o.event_year ? Number(o.event_year) : 2000;
+  const m = String(Number(o.event_month)).padStart(2, "0");
+  const d = String(Number(o.event_day)).padStart(2, "0");
+  return `${y}-${m}-${d}`;
+}
+
+function openEditor(existing) {
+  const o = existing ?? null;
+  const kindOptions = KINDS.map((k) => `<option value="${k.value}" ${o?.kind === k.value ? "selected" : ""}>${k.icon} ${k.label}</option>`).join("");
+  const trackYear = o ? o.event_year != null : true;
+  openModal(`
+    <h2>${o ? "Edit occasion" : "Add occasion"}</h2>
+    <form class="form" id="occ-form">
+      <div class="field">
+        <label for="f-title">Who or what</label>
+        <input id="f-title" data-autofocus value="${esc(o?.title ?? "")}" placeholder="Mom, Our Anniversary, Diwali…" />
+      </div>
+      <div class="grid2">
+        <div class="field">
+          <label for="f-kind">Type</label>
+          <select id="f-kind">${kindOptions}</select>
+        </div>
+        <div class="field">
+          <label for="f-date">Date</label>
+          <input id="f-date" type="date" value="${esc(isoForInput(o))}" required />
+        </div>
+      </div>
+      <div class="checkrow">
+        <input type="checkbox" id="f-trackyear" ${trackYear ? "checked" : ""} />
+        <label for="f-trackyear">Track the year (show age / how many years)</label>
+      </div>
+      <div class="field">
+        <label for="f-gift">Gift idea <span class="muted" style="text-transform:none">(optional)</span></label>
+        <input id="f-gift" value="${esc(o?.gift_idea ?? "")}" placeholder="An idea so you're not scrambling later" />
+      </div>
+      <div class="field">
+        <label for="f-notes">Notes <span class="muted" style="text-transform:none">(optional)</span></label>
+        <textarea id="f-notes" placeholder="Anything worth remembering">${esc(o?.notes ?? "")}</textarea>
+      </div>
+      <div class="checkrow">
+        <input type="checkbox" id="f-private" ${o?.visibility === "private" ? "checked" : ""} />
+        <label for="f-private">Keep private (only you can see this — e.g. a surprise gift)</label>
+      </div>
+      <div class="modal-actions">
+        ${o ? `<button type="button" class="btn btn-danger modal-left" data-delete="${esc(o.id)}">Delete</button>` : ""}
+        <button type="button" class="btn btn-ghost" data-cancel>Cancel</button>
+        <button type="submit" class="btn">${o ? "Save" : "Add"}</button>
+      </div>
+    </form>
+  `);
+  modalEl.querySelector("[data-autofocus]")?.focus();
+  modalEl.querySelector("#occ-form").addEventListener("submit", (e) => {
+    e.preventDefault();
+    submitEditor(o?.id ?? null, { source: o?.source, source_ref: o?.source_ref, lead_days: o?.lead_days });
+  });
+}
+
+function submitEditor(existingId, carry = {}) {
+  const title = document.getElementById("f-title").value.trim();
+  const kind = document.getElementById("f-kind").value;
+  const dateStr = document.getElementById("f-date").value;
+  const trackYear = document.getElementById("f-trackyear").checked;
+  const gift = document.getElementById("f-gift").value.trim();
+  const notes = document.getElementById("f-notes").value.trim();
+  const isPrivate = document.getElementById("f-private").checked;
+
+  const m = /^(\d{4})-(\d{2})-(\d{2})$/.exec(dateStr);
+  if (!m) { showError("Pick a valid date."); document.getElementById("f-date").focus(); return; }
+  if (!title) { document.getElementById("f-title").focus(); return; }
+
+  const btn = modalEl?.querySelector('button[type="submit"]');
+  if (btn) { btn.disabled = true; btn.textContent = "Saving…"; }
+
+  const fields = {
+    kind,
+    title,
+    event_month: Number(m[2]),
+    event_day: Number(m[3]),
+    event_year: trackYear ? Number(m[1]) : null,
+    visibility: isPrivate ? "private" : "everyone",
+    notes,
+    gift_idea: gift,
+    lead_days: carry.lead_days ?? 3,
+    source: carry.source ?? "manual",
+    source_ref: carry.source_ref ?? "",
+  };
+  saveOccasion(fields, existingId).catch((e) => showError(e.message));
+}
+
+function addFromSuggestion(key) {
+  const [contactId, kind] = key.split(":");
+  const s = contactSuggestions(contactDates, occasions).find((x) => x.contactId === contactId && x.kind === kind);
+  if (!s) return;
+  saveOccasion({
+    kind: s.kind,
+    title: s.name,
+    event_month: s.month,
+    event_day: s.day,
+    event_year: s.year,
+    visibility: "everyone",
+    notes: "",
+    gift_idea: "",
+    lead_days: 3,
+    source: "contacts",
+    source_ref: s.contactId,
+  }, null).then(() => showNotice(`Added ${s.name}.`)).catch((e) => showError(e.message));
+}
+
+/* ── Events ────────────────────────────────────────────────────────────────── */
+document.addEventListener("click", (e) => {
+  const t = e.target.closest("button");
+  if (!t) return;
+  if (t.hasAttribute("data-add")) { openEditor(null); return; }
+  if (t.hasAttribute("data-edit")) { openEditor(occasions.find((o) => o.id === t.getAttribute("data-edit"))); return; }
+  if (t.hasAttribute("data-cancel")) { closeModal(); return; }
+  if (t.hasAttribute("data-delete")) { deleteOccasion(t.getAttribute("data-delete")); return; }
+  if (t.hasAttribute("data-add-suggestion")) { addFromSuggestion(t.getAttribute("data-add-suggestion")); return; }
+});
+
+refresh();
+</script>
+</body>
+</html>

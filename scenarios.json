@@ -1,0 +1,50 @@
+{
+  "scenarios": [
+    {
+      "name": "private occasions are hidden from other members; shared ones are visible",
+      "members": { "owner": "adult", "other": "adult" },
+      "steps": [
+        {
+          "action": "db",
+          "as": "owner",
+          "sql": "INSERT INTO app_occasions__occasions (id, member_id, kind, title, event_month, event_day, event_year, visibility, notes, gift_idea, lead_days, source, source_ref, created_at, updated_at) VALUES (?, ?, 'gift', 'Surprise', 2, 14, NULL, 'private', '', 'a watch', 3, 'manual', '', '2026-01-01T00:00:00Z', '2026-01-01T00:00:00Z')",
+          "params": ["occ-private", "{{owner}}"],
+          "expect": { "status": 200 }
+        },
+        {
+          "action": "db",
+          "as": "owner",
+          "sql": "INSERT INTO app_occasions__occasions (id, member_id, kind, title, event_month, event_day, event_year, visibility, notes, gift_idea, lead_days, source, source_ref, created_at, updated_at) VALUES (?, ?, 'birthday', 'Mom', 6, 21, 1959, 'everyone', '', '', 3, 'manual', '', '2026-01-01T00:00:00Z', '2026-01-01T00:00:00Z')",
+          "params": ["occ-shared", "{{owner}}"],
+          "expect": { "status": 200 }
+        },
+        {
+          "action": "db",
+          "as": "other",
+          "sql": "SELECT id, title FROM app_occasions__occasions",
+          "expect": { "status": 200, "rowCount": 1, "rowsContain": [{ "id": "occ-shared" }] }
+        },
+        {
+          "action": "db",
+          "as": "owner",
+          "sql": "SELECT id FROM app_occasions__occasions",
+          "expect": { "status": 200, "rowCount": 2 }
+        },
+        {
+          "action": "db",
+          "as": "other",
+          "sql": "UPDATE app_occasions__occasions SET gift_idea = 'leaked' WHERE id = ?",
+          "params": ["occ-private"],
+          "expect": { "status": 200 }
+        },
+        {
+          "action": "db",
+          "as": "owner",
+          "sql": "SELECT gift_idea FROM app_occasions__occasions WHERE id = ?",
+          "params": ["occ-private"],
+          "expect": { "status": 200, "rowsContain": [{ "gift_idea": "a watch" }] }
+        }
+      ]
+    }
+  ]
+}
