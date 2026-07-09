@@ -1,7 +1,7 @@
 {
   "id": "occasions",
   "name": "Occasions",
-  "version": "1.0.0",
+  "version": "1.1.0",
   "description": "Birthdays, anniversaries, memorials, holidays, and gift reminders — one shared list of the dates your household doesn't want to miss, with countdowns to what's coming up. Pull dates in from your Contacts, or add your own.",
   "entrypoint": "index.html",
   "runtime": "static",
@@ -26,6 +26,19 @@
       "everyone_values": ["everyone"],
       "write_visibility_scoped": true
     }
+  },
+  "required_capabilities": ["cron", "email"],
+  "date_reminders": {
+    "table": "occasions",
+    "month_column": "event_month",
+    "day_column": "event_day",
+    "lead_days_column": "lead_days",
+    "title_column": "title",
+    "kind_column": "kind",
+    "owner_column": "member_id",
+    "visibility_column": "visibility",
+    "everyone_values": ["everyone"],
+    "last_reminded_column": "last_reminded_at"
   },
   "nav": { "label": "Occasions" },
   "resource_limits": {

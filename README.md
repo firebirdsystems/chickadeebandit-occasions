@@ -33,11 +33,20 @@ npm run build   # produces dist/bundle.json
   (declared in `data_access.reads`) to suggest birthdays/anniversaries you can add
   in one tap. If Contacts isn't installed the suggestions section is simply empty.
 
-## Reminders (premium — follow-up)
+## Reminders (premium)
 
-Free today: the in-app upcoming list and countdowns. A premium email nudge
-("Grandma's birthday is in 3 days") is intended as a follow-up once the hub grows
-a date-anchored reminder cron; `lead_days` is already stored per occasion so that
-wiring is drop-in. The two existing hub cron protocols (`inactivity_alerts`,
-`digest`) are silence/cadence based and don't fit fixed annual dates, so nothing
-half-working is wired up in the meantime.
+Free: the in-app upcoming list and countdowns. Premium (`cron` + `email`
+capabilities): the hub's `date_reminders` protocol emails a nudge ("Grandma's
+birthday is in 3 days") ahead of each occasion, delivered in the household's
+local morning.
+
+- Each occasion's **Email reminder** picker sets `lead_days` (day-of up to two
+  weeks before). The value is always saved; emails only go out once the
+  household holds the premium bundle — the app shows an upgrade note otherwise
+  (via `GET api/reminders-status`).
+- Recipients are **visibility-aware, enforced hub-side**: `everyone` occasions
+  email the whole household; `private` occasions (surprise gifts) email only
+  their owner.
+- Dedupe: the cron stamps `last_reminded_at` (migration `002`) after a send, so
+  each occasion nudges exactly once per occurrence, and re-arms for next year.
+  App code never writes that column.

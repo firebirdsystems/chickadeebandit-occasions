@@ -139,6 +139,7 @@ let memberMap = new Map();
 let me = null;
 let occasions = [];
 let contactDates = [];
+let reminderStatus = null; // { entitled, missing_capabilities, bundle } | null (demo / fetch failed)
 let error = "";
 let notice = "";
 let modalEl = null;
@@ -206,10 +207,23 @@ async function loadOccasions() {
   occasions = res.rows ?? [];
 }
 
+/** Whether the hub cron will actually email reminders for this household —
+ *  the sends are hub-side (date_reminders protocol); this endpoint only tells
+ *  us if the paid cron+email capabilities are unlocked, so the UI can label
+ *  the reminder picker honestly. Non-fatal: demo mode and old hubs skip it. */
+async function loadReminderStatus() {
+  reminderStatus = null;
+  if (!DB) return;
+  try {
+    const res = await fetch("api/reminders-status");
+    if (res.ok) reminderStatus = await res.json();
+  } catch { /* hub without the protocol — leave null, UI stays quiet */ }
+}
+
 async function refresh() {
   clearMessages();
   try {
-    await Promise.all([loadMembers(), loadOccasions(), loadContactDates()]);
+    await Promise.all([loadMembers(), loadOccasions(), loadContactDates(), loadReminderStatus()]);
     render();
   } catch (e) {
     error = e.message;
@@ -369,6 +383,11 @@ function render() {
       <div>
         <h1>Occasions</h1>
         <p class="muted tiny">The dates your household doesn't want to miss.</p>
+        ${reminderStatus
+          ? (reminderStatus.entitled
+            ? `<p class="muted tiny">📬 Email reminders are on — everyone gets a nudge before each shared date.</p>`
+            : `<p class="muted tiny">📬 Email reminders are part of the ${esc(reminderStatus.bundle ?? "premium")} bundle — countdowns below work either way.</p>`)
+          : ""}
       </div>
       <button class="btn" data-add>+ Add</button>
     </div>
@@ -400,6 +419,22 @@ function isoForInput(o) {
   return `${y}-${m}-${d}`;
 }
 
+const LEAD_CHOICES = [
+  { value: 0, label: "On the day" },
+  { value: 1, label: "1 day before" },
+  { value: 3, label: "3 days before" },
+  { value: 7, label: "1 week before" },
+  { value: 14, label: "2 weeks before" },
+];
+
+function leadOptions(current) {
+  const cur = Number.isFinite(Number(current)) ? Number(current) : 3;
+  const choices = LEAD_CHOICES.some((c) => c.value === cur)
+    ? LEAD_CHOICES
+    : [...LEAD_CHOICES, { value: cur, label: `${cur} days before` }].sort((a, b) => a.value - b.value);
+  return choices.map((c) => `<option value="${c.value}" ${c.value === cur ? "selected" : ""}>${c.label}</option>`).join("");
+}
+
 function openEditor(existing) {
   const o = existing ?? null;
   const kindOptions = KINDS.map((k) => `<option value="${k.value}" ${o?.kind === k.value ? "selected" : ""}>${k.icon} ${k.label}</option>`).join("");
@@ -426,6 +461,13 @@ function openEditor(existing) {
         <label for="f-trackyear">Track the year (show age / how many years)</label>
       </div>
       <div class="field">
+        <label for="f-lead">Email reminder</label>
+        <select id="f-lead">${leadOptions(o?.lead_days ?? 3)}</select>
+        ${reminderStatus && !reminderStatus.entitled
+          ? `<span class="tiny muted">Saved now, emailed once your household unlocks the ${esc(reminderStatus.bundle ?? "premium")} bundle.</span>`
+          : ""}
+      </div>
+      <div class="field">
         <label for="f-gift">Gift idea <span class="muted" style="text-transform:none">(optional)</span></label>
         <input id="f-gift" value="${esc(o?.gift_idea ?? "")}" placeholder="An idea so you're not scrambling later" />
       </div>
@@ -447,7 +489,7 @@ function openEditor(existing) {
   modalEl.querySelector("[data-autofocus]")?.focus();
   modalEl.querySelector("#occ-form").addEventListener("submit", (e) => {
     e.preventDefault();
-    submitEditor(o?.id ?? null, { source: o?.source, source_ref: o?.source_ref, lead_days: o?.lead_days });
+    submitEditor(o?.id ?? null, { source: o?.source, source_ref: o?.source_ref });
   });
 }
 
@@ -459,6 +501,8 @@ function submitEditor(existingId, carry = {}) {
   const gift = document.getElementById("f-gift").value.trim();
   const notes = document.getElementById("f-notes").value.trim();
   const isPrivate = document.getElementById("f-private").checked;
+  const leadRaw = Number(document.getElementById("f-lead").value);
+  const leadDays = Number.isFinite(leadRaw) && leadRaw >= 0 ? leadRaw : 3;
 
   const m = /^(\d{4})-(\d{2})-(\d{2})$/.exec(dateStr);
   if (!m) { showError("Pick a valid date."); document.getElementById("f-date").focus(); return; }
@@ -476,7 +520,7 @@ function submitEditor(existingId, carry = {}) {
     visibility: isPrivate ? "private" : "everyone",
     notes,
     gift_idea: gift,
-    lead_days: carry.lead_days ?? 3,
+    lead_days: leadDays,
     source: carry.source ?? "manual",
     source_ref: carry.source_ref ?? "",
   };
