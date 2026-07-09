@@ -1,7 +1,7 @@
 {
   "id": "occasions",
   "name": "Occasions",
-  "version": "1.1.0",
+  "version": "1.0.0",
   "description": "Birthdays, anniversaries, memorials, holidays, and gift reminders — one shared list of the dates your household doesn't want to miss, with countdowns to what's coming up. Pull dates in from your Contacts, or add your own.",
   "entrypoint": "index.html",
   "runtime": "static",
