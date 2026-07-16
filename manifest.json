@@ -17,7 +17,7 @@
     "requires_approval": false
   },
   "storage": "db",
-  "db_plaintext_columns": ["kind", "source"],
+  "db_plaintext_columns": ["kind", "source", "event_month", "event_day", "event_year", "lead_days"],
   "row_policies": {
     "occasions": {
       "kind": "owner_or_visibility",
