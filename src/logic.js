@@ -13,8 +13,17 @@ export const KINDS = [
   { value: "memorial",    label: "Memorial",    icon: "🕊️" },
   { value: "holiday",     label: "Holiday",     icon: "🎉" },
   { value: "gift",        label: "Gift",        icon: "🎁" },
+  { value: "milestone",   label: "Countdown",   icon: "⏳" },
   { value: "other",       label: "Other",       icon: "📌" },
 ];
+
+/** The one-off kind: a single dated event ("Disney trip"), not an annual
+ *  recurrence. Its event_year is the target year, not an origin year. */
+export const MILESTONE_KIND = "milestone";
+
+export function isMilestone(occasion) {
+  return occasion?.kind === MILESTONE_KIND;
+}
 
 const KIND_BY_VALUE = new Map(KINDS.map((k) => [k.value, k]));
 
@@ -35,6 +44,12 @@ export function daysInMonth(year, month) {
 export function makeDate(year, month, day) {
   const clampedDay = Math.min(day, daysInMonth(year, month));
   return new Date(year, month - 1, clampedDay, 12, 0, 0, 0);
+}
+
+/** Local yyyy-mm-dd, deliberately not UTC: editor validation follows the
+ * user's calendar day even when UTC has already crossed midnight. */
+export function localDateKey(now = new Date()) {
+  return `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, "0")}-${String(now.getDate()).padStart(2, "0")}`;
 }
 
 /** A Date reduced to local midnight — for whole-day comparisons/arithmetic. */
@@ -112,9 +127,45 @@ export function yearsAtNext(month, day, year, from = new Date()) {
   return n >= 0 ? n : null;
 }
 
-/** Human countdown label: "Today", "Tomorrow", "In 3 days", "In 2 weeks". */
+function validMonthDay(month, day) {
+  return Number.isInteger(month) && Number.isInteger(day)
+    && month >= 1 && month <= 12 && day >= 1 && day <= 31;
+}
+
+/**
+ * The concrete date an occasion counts down to, as a local-midnight Date, or
+ * null when the row can't produce one.
+ *
+ * Milestones are one-off: their stored (year, month, day) *is* the target, so
+ * a milestone whose date has passed returns a date in the past (callers decide
+ * whether to show it). Every other kind recurs annually, so the target is the
+ * next occurrence on or after `from`.
+ */
+export function occasionTarget(occasion, from = new Date()) {
+  const month = Number(occasion?.event_month);
+  const day = Number(occasion?.event_day);
+  if (!validMonthDay(month, day)) return null;
+  if (isMilestone(occasion)) {
+    const year = occasion.event_year != null ? Number(occasion.event_year) : null;
+    if (!Number.isInteger(year)) return null; // a milestone without a year has no target
+    return atMidnight(makeDate(year, month, day));
+  }
+  return nextOccurrence(month, day, from);
+}
+
+/** Whole days from `from` until an occasion's target. 0 = today, negative =
+ *  a milestone that has already passed. Null when there's no usable target. */
+export function daysUntilOccasion(occasion, from = new Date()) {
+  const target = occasionTarget(occasion, from);
+  if (!target) return null;
+  return Math.round((target - atMidnight(from)) / 86400000);
+}
+
+/** Human countdown label: "Today", "Tomorrow", "In 3 days", "In 2 weeks".
+ *  Negative days only occur for a one-off milestone whose date has gone by. */
 export function countdownLabel(days) {
-  if (days <= 0) return "Today";
+  if (days < 0) return "Passed";
+  if (days === 0) return "Today";
   if (days === 1) return "Tomorrow";
   if (days < 14) return `In ${days} days`;
   if (days < 60) return `In ${Math.round(days / 7)} weeks`;
@@ -122,28 +173,58 @@ export function countdownLabel(days) {
   return "In a year";
 }
 
+/** Decorate one occasion with its target date, day count and years-at-next.
+ *  Returns null when the row has no usable target. */
+function decorate(o, from) {
+  const target = occasionTarget(o, from);
+  if (!target) return null;
+  const month = Number(o.event_month);
+  const day = Number(o.event_day);
+  return {
+    ...o,
+    _next: target,
+    _days: Math.round((target - atMidnight(from)) / 86400000),
+    _years: isMilestone(o)
+      ? null
+      : yearsAtNext(month, day, o.event_year != null ? Number(o.event_year) : null, from),
+  };
+}
+
 /**
  * Decorate occasions with their next occurrence + countdown and sort soonest
- * first. Rows missing a valid month/day are dropped. Ties broken by title.
+ * first. Rows missing a valid month/day are dropped, as are milestones whose
+ * date has already passed (they don't recur — see `passedMilestones`). Ties
+ * broken by title.
  */
 export function upcoming(occasions, from = new Date()) {
   return occasions
-    .map((o) => {
-      const month = Number(o.event_month);
-      const day = Number(o.event_day);
-      if (!Number.isInteger(month) || !Number.isInteger(day) || month < 1 || month > 12 || day < 1) {
-        return null;
-      }
-      const days = daysUntil(month, day, from);
-      return {
-        ...o,
-        _next: nextOccurrence(month, day, from),
-        _days: days,
-        _years: yearsAtNext(month, day, o.event_year != null ? Number(o.event_year) : null, from),
-      };
-    })
-    .filter(Boolean)
+    .map((o) => decorate(o, from))
+    .filter((o) => o && o._days >= 0)
     .sort((a, b) => a._days - b._days || String(a.title).localeCompare(String(b.title)));
+}
+
+/** One-off milestones whose date is in the past, most recent first. They stay
+ *  in the list (nothing is auto-deleted) but out of the upcoming section. */
+export function passedMilestones(occasions, from = new Date()) {
+  return occasions
+    .filter(isMilestone)
+    .map((o) => decorate(o, from))
+    .filter((o) => o && o._days < 0)
+    .sort((a, b) => b._days - a._days || String(a.title).localeCompare(String(b.title)));
+}
+
+/**
+ * The rows that appear on the shared countdown surfaces — the hub glance card,
+ * the kiosk ambient card and the home-screen widgets — soonest first.
+ *
+ * Mirrors the hub-side glance query (manifest.glance) so the in-app "shown on
+ * shared screens" preview and the surfaces agree: opted in via `countdown`,
+ * visible to everyone (ambient identities are not the owner, so the row policy
+ * would drop private rows anyway), and not already passed.
+ */
+export function countdownRows(occasions, from = new Date(), limit = 3) {
+  return upcoming(occasions.filter((o) => Number(o?.countdown) === 1 && o?.visibility === "everyone"), from)
+    .slice(0, limit);
 }
 
 /**

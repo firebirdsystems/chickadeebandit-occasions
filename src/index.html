@@ -127,7 +127,8 @@
 <script type="module">
 import { esc, isAdult, hubConfirm } from "/hub-sdk.js";
 import {
-  KINDS, kindMeta, upcoming, countdownLabel, contactSuggestions, daysInMonth,
+  KINDS, kindMeta, upcoming, passedMilestones, countdownLabel, contactSuggestions,
+  daysInMonth, localDateKey, MILESTONE_KIND,
 } from "./logic.js";
 
 const CONTEXT = window.__CONTEXT_URL ?? "";
@@ -194,15 +195,17 @@ async function loadContactDates() {
 async function loadOccasions() {
   if (!DB) {
     const soon = new Date();
+    const trip = new Date(soon.getTime() + 12 * 86400000);
     occasions = [
-      { id: "d1", member_id: "demo-1", kind: "birthday", title: "Mom", event_month: soon.getMonth() + 1, event_day: Math.min(soon.getDate() + 3, 28), event_year: 1959, visibility: "everyone", notes: "", gift_idea: "Gardening gloves", lead_days: 3, source: "manual", source_ref: "", created_at: nowIso(), updated_at: nowIso() },
-      { id: "d2", member_id: "demo-2", kind: "anniversary", title: "Our Anniversary", event_month: 6, event_day: 21, event_year: 2010, visibility: "everyone", notes: "", gift_idea: "", lead_days: 7, source: "manual", source_ref: "", created_at: nowIso(), updated_at: nowIso() },
-      { id: "d3", member_id: "demo-1", kind: "holiday", title: "Diwali", event_month: 11, event_day: 1, event_year: null, visibility: "everyone", notes: "", gift_idea: "", lead_days: 3, source: "manual", source_ref: "", created_at: nowIso(), updated_at: nowIso() },
+      { id: "d1", member_id: "demo-1", kind: "birthday", title: "Mom", event_month: soon.getMonth() + 1, event_day: Math.min(soon.getDate() + 3, 28), event_year: 1959, visibility: "everyone", notes: "", gift_idea: "Gardening gloves", lead_days: 3, source: "manual", source_ref: "", emoji: "", countdown: 0, created_at: nowIso(), updated_at: nowIso() },
+      { id: "d2", member_id: "demo-2", kind: "anniversary", title: "Our Anniversary", event_month: 6, event_day: 21, event_year: 2010, visibility: "everyone", notes: "", gift_idea: "", lead_days: 7, source: "manual", source_ref: "", emoji: "", countdown: 0, created_at: nowIso(), updated_at: nowIso() },
+      { id: "d3", member_id: "demo-1", kind: "holiday", title: "Diwali", event_month: 11, event_day: 1, event_year: null, visibility: "everyone", notes: "", gift_idea: "", lead_days: 3, source: "manual", source_ref: "", emoji: "", countdown: 0, created_at: nowIso(), updated_at: nowIso() },
+      { id: "d4", member_id: "demo-1", kind: MILESTONE_KIND, title: "Disney trip", event_month: trip.getMonth() + 1, event_day: trip.getDate(), event_year: trip.getFullYear(), visibility: "everyone", notes: "", gift_idea: "", lead_days: 7, source: "manual", source_ref: "", emoji: "🎢", countdown: 1, created_at: nowIso(), updated_at: nowIso() },
     ];
     return;
   }
   const res = await db(
-    "SELECT id, member_id, kind, title, event_month, event_day, event_year, visibility, notes, gift_idea, lead_days, source, source_ref, created_at, updated_at FROM app_occasions__occasions",
+    "SELECT id, member_id, kind, title, event_month, event_day, event_year, visibility, notes, gift_idea, lead_days, source, source_ref, emoji, countdown, created_at, updated_at FROM app_occasions__occasions",
   );
   occasions = res.rows ?? [];
 }
@@ -247,9 +250,9 @@ async function saveOccasion(fields, existingId) {
     try {
       await db(
         `UPDATE app_occasions__occasions
-         SET kind=?, title=?, event_month=?, event_day=?, event_year=?, visibility=?, notes=?, gift_idea=?, lead_days=?, updated_at=?
+         SET kind=?, title=?, event_month=?, event_day=?, event_year=?, visibility=?, notes=?, gift_idea=?, lead_days=?, emoji=?, countdown=?, updated_at=?
          WHERE id=?`,
-        [fields.kind, fields.title, fields.event_month, fields.event_day, fields.event_year, fields.visibility, fields.notes, fields.gift_idea, fields.lead_days, now, existingId],
+        [fields.kind, fields.title, fields.event_month, fields.event_day, fields.event_year, fields.visibility, fields.notes, fields.gift_idea, fields.lead_days, fields.emoji, fields.countdown, now, existingId],
       );
     } catch (e) {
       if (idx !== -1 && prev) occasions[idx] = prev;
@@ -270,9 +273,9 @@ async function saveOccasion(fields, existingId) {
     try {
       await db(
         `INSERT INTO app_occasions__occasions
-          (id, member_id, kind, title, event_month, event_day, event_year, visibility, notes, gift_idea, lead_days, source, source_ref, created_at, updated_at)
-         VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`,
-        [row.id, row.member_id, row.kind, row.title, row.event_month, row.event_day, row.event_year, row.visibility, row.notes, row.gift_idea, row.lead_days, row.source, row.source_ref, now, now],
+          (id, member_id, kind, title, event_month, event_day, event_year, visibility, notes, gift_idea, lead_days, source, source_ref, emoji, countdown, created_at, updated_at)
+         VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`,
+        [row.id, row.member_id, row.kind, row.title, row.event_month, row.event_day, row.event_year, row.visibility, row.notes, row.gift_idea, row.lead_days, row.source, row.source_ref, row.emoji, row.countdown, now, now],
       );
     } catch (e) {
       occasions = occasions.filter((o) => o.id !== row.id);
@@ -330,11 +333,12 @@ function renderOccasion(o) {
   const yl = yearsLabel(o.kind, o._years);
   return `
     <div class="occ">
-      <div class="occ-emoji" aria-hidden="true">${meta.icon}</div>
+      <div class="occ-emoji" aria-hidden="true">${esc(o.emoji || meta.icon)}</div>
       <div class="occ-body">
         <div class="occ-title">
           ${esc(o.title || meta.label)}
           ${o.visibility === "private" ? `<span class="lock" title="Only you can see this">🔒</span>` : ""}
+          ${Number(o.countdown) === 1 ? `<span class="lock" title="Counting down on the dashboard, kiosk and widgets">📺</span>` : ""}
         </div>
         <div class="occ-meta">
           ${esc(fmtDate(Number(o.event_month), Number(o.event_day), o.event_year ? Number(o.event_year) : null))}
@@ -374,6 +378,17 @@ function renderSuggestions() {
   `;
 }
 
+/** One-off milestones whose day has come and gone. They aren't deleted (a past
+ *  trip is still a record of the year), just moved out of the countdown list. */
+function renderPassed() {
+  const past = passedMilestones(occasions);
+  if (!past.length) return "";
+  return `
+    <div class="section-head"><h2 class="muted">Passed</h2></div>
+    <div class="stack">${past.map(renderOccasion).join("")}</div>
+  `;
+}
+
 function render() {
   const root = document.getElementById("root");
   root.className = "app-root";
@@ -395,8 +410,9 @@ function render() {
     ${notice ? `<div class="notice">${esc(notice)}</div>` : ""}
     ${list.length
       ? `<div class="stack">${list.map(renderOccasion).join("")}</div>`
-      : `<div class="card empty">No occasions yet. Add a birthday or anniversary, or pull one in from your contacts.</div>`}
+      : `<div class="card empty">No occasions yet. Add a birthday or anniversary, count down to a trip, or pull a date in from your contacts.</div>`}
     ${renderSuggestions()}
+    ${renderPassed()}
   `;
 }
 
@@ -454,11 +470,16 @@ function openEditor(existing) {
         <div class="field">
           <label for="f-date">Date</label>
           <input id="f-date" type="date" value="${esc(isoForInput(o))}" required />
+          <span class="tiny muted" id="f-date-hint" hidden>A countdown is a one-off date — pick the year too.</span>
         </div>
       </div>
-      <div class="checkrow">
+      <div class="checkrow" id="f-trackyear-row">
         <input type="checkbox" id="f-trackyear" ${trackYear ? "checked" : ""} />
         <label for="f-trackyear">Track the year (show age / how many years)</label>
+      </div>
+      <div class="field">
+        <label for="f-emoji">Emoji <span class="muted" style="text-transform:none">(optional — the big visual on shared screens)</span></label>
+        <input id="f-emoji" maxlength="8" value="${esc(o?.emoji ?? "")}" placeholder="🎢" />
       </div>
       <div class="field">
         <label for="f-lead">Email reminder</label>
@@ -479,6 +500,13 @@ function openEditor(existing) {
         <input type="checkbox" id="f-private" ${o?.visibility === "private" ? "checked" : ""} />
         <label for="f-private">Keep private (only you can see this — e.g. a surprise gift)</label>
       </div>
+      <div class="checkrow">
+        <input type="checkbox" id="f-countdown" ${Number(o?.countdown) === 1 ? "checked" : ""} />
+        <label for="f-countdown">Count down on shared screens (dashboard, kiosk, home-screen widget)</label>
+      </div>
+      <span class="tiny muted" id="f-countdown-hint" hidden>
+        Shared screens only show occasions everyone can see, so a private occasion counts down inside this app only.
+      </span>
       <div class="modal-actions">
         ${o ? `<button type="button" class="btn btn-danger modal-left" data-delete="${esc(o.id)}">Delete</button>` : ""}
         <button type="button" class="btn btn-ghost" data-cancel>Cancel</button>
@@ -491,6 +519,30 @@ function openEditor(existing) {
     e.preventDefault();
     submitEditor(o?.id ?? null, { source: o?.source, source_ref: o?.source_ref });
   });
+
+  // A milestone's year IS its target, so "track the year" doesn't apply; and a
+  // private occasion can never reach the shared surfaces (the ambient kiosk /
+  // widget identity isn't its owner, so the row policy filters it out), so the
+  // countdown toggle is disabled rather than silently ineffective.
+  const kindSel = modalEl.querySelector("#f-kind");
+  const privateBox = modalEl.querySelector("#f-private");
+  const countdownBox = modalEl.querySelector("#f-countdown");
+  function syncEditor() {
+    const milestone = kindSel.value === MILESTONE_KIND;
+    modalEl.querySelector("#f-trackyear-row").hidden = milestone;
+    modalEl.querySelector("#f-date-hint").hidden = !milestone;
+    countdownBox.disabled = privateBox.checked;
+    if (privateBox.checked) countdownBox.checked = false;
+    modalEl.querySelector("#f-countdown-hint").hidden = !privateBox.checked;
+  }
+  kindSel.addEventListener("change", () => {
+    // Counting down to a one-off date is the whole point of a milestone —
+    // default the toggle on when the user picks that type for a new occasion.
+    if (kindSel.value === MILESTONE_KIND && !existing && !privateBox.checked) countdownBox.checked = true;
+    syncEditor();
+  });
+  privateBox.addEventListener("change", syncEditor);
+  syncEditor();
 }
 
 function submitEditor(existingId, carry = {}) {
@@ -501,12 +553,22 @@ function submitEditor(existingId, carry = {}) {
   const gift = document.getElementById("f-gift").value.trim();
   const notes = document.getElementById("f-notes").value.trim();
   const isPrivate = document.getElementById("f-private").checked;
+  const emoji = document.getElementById("f-emoji").value.trim();
+  const countdown = document.getElementById("f-countdown").checked && !isPrivate ? 1 : 0;
   const leadRaw = Number(document.getElementById("f-lead").value);
   const leadDays = Number.isFinite(leadRaw) && leadRaw >= 0 ? leadRaw : 3;
 
   const m = /^(\d{4})-(\d{2})-(\d{2})$/.exec(dateStr);
   if (!m) { showError("Pick a valid date."); document.getElementById("f-date").focus(); return; }
   if (!title) { document.getElementById("f-title").focus(); return; }
+  const milestone = kind === MILESTONE_KIND;
+  // A one-off date in the past would count down to nothing. Only block on
+  // create — an existing milestone is allowed to age into the Passed section.
+  if (milestone && !existingId && dateStr < localDateKey()) {
+    showError("A countdown needs a date in the future.");
+    document.getElementById("f-date").focus();
+    return;
+  }
 
   const btn = modalEl?.querySelector('button[type="submit"]');
   if (btn) { btn.disabled = true; btn.textContent = "Saving…"; }
@@ -516,11 +578,14 @@ function submitEditor(existingId, carry = {}) {
     title,
     event_month: Number(m[2]),
     event_day: Number(m[3]),
-    event_year: trackYear ? Number(m[1]) : null,
+    // A milestone's year is its target, not an optional origin year.
+    event_year: milestone || trackYear ? Number(m[1]) : null,
     visibility: isPrivate ? "private" : "everyone",
     notes,
     gift_idea: gift,
     lead_days: leadDays,
+    emoji,
+    countdown,
     source: carry.source ?? "manual",
     source_ref: carry.source_ref ?? "",
   };
@@ -541,6 +606,8 @@ function addFromSuggestion(key) {
     notes: "",
     gift_idea: "",
     lead_days: 3,
+    emoji: "",
+    countdown: 0,
     source: "contacts",
     source_ref: s.contactId,
   }, null).then(() => showNotice(`Added ${s.name}.`)).catch((e) => showError(e.message));

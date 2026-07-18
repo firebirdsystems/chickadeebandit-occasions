@@ -1,6 +1,51 @@
 {
   "scenarios": [
     {
+      "name": "countdown surfaces only show occasions everyone can see",
+      "members": { "owner": "adult", "other": "adult" },
+      "steps": [
+        {
+          "action": "db",
+          "as": "owner",
+          "sql": "INSERT INTO app_occasions__occasions (id, member_id, kind, title, event_month, event_day, event_year, visibility, notes, gift_idea, lead_days, source, source_ref, emoji, countdown, created_at, updated_at) VALUES (?, ?, 'milestone', 'Disney trip', 3, 15, 2099, 'everyone', '', '', 7, 'manual', '', '🎢', 1, '2026-01-01T00:00:00Z', '2026-01-01T00:00:00Z')",
+          "params": ["occ-shared-countdown", "{{owner}}"],
+          "expect": { "status": 200 }
+        },
+        {
+          "action": "db",
+          "as": "owner",
+          "sql": "INSERT INTO app_occasions__occasions (id, member_id, kind, title, event_month, event_day, event_year, visibility, notes, gift_idea, lead_days, source, source_ref, emoji, countdown, created_at, updated_at) VALUES (?, ?, 'milestone', 'Proposal', 4, 2, 2099, 'private', '', '', 7, 'manual', '', '💍', 1, '2026-01-01T00:00:00Z', '2026-01-01T00:00:00Z')",
+          "params": ["occ-private-countdown", "{{owner}}"],
+          "expect": { "status": 200 }
+        },
+        {
+          "action": "db",
+          "as": "owner",
+          "sql": "INSERT INTO app_occasions__occasions (id, member_id, kind, title, event_month, event_day, event_year, visibility, notes, gift_idea, lead_days, source, source_ref, emoji, countdown, created_at, updated_at) VALUES (?, ?, 'milestone', 'Dentist', 5, 9, 2099, 'everyone', '', '', 7, 'manual', '', '', 0, '2026-01-01T00:00:00Z', '2026-01-01T00:00:00Z')",
+          "params": ["occ-not-counted", "{{owner}}"],
+          "expect": { "status": 200 }
+        },
+        {
+          "action": "db",
+          "as": "other",
+          "sql": "SELECT id AS id, title AS title, printf('%04d-%02d-%02d', event_year, event_month, event_day) AS at FROM app_occasions__occasions WHERE countdown = 1 AND (kind <> 'milestone' OR (event_year IS NOT NULL AND printf('%04d-%02d-%02d', event_year, event_month, event_day) >= date('now'))) ORDER BY at LIMIT 3",
+          "expect": { "status": 200, "rowCount": 1, "rowsContain": [{ "id": "occ-shared-countdown" }] }
+        },
+        {
+          "action": "db",
+          "as": "owner",
+          "sql": "SELECT id AS id FROM app_occasions__occasions WHERE countdown = 1 ORDER BY event_month LIMIT 3",
+          "expect": { "status": 200, "rowCount": 2 }
+        },
+        {
+          "action": "db",
+          "as": "owner",
+          "sql": "SELECT id AS id FROM app_occasions__occasions WHERE countdown = 1 AND visibility = 'everyone' ORDER BY event_month LIMIT 3",
+          "expect": { "status": 200, "rowCount": 1, "rowsContain": [{ "id": "occ-shared-countdown" }] }
+        }
+      ]
+    },
+    {
       "name": "private occasions are hidden from other members; shared ones are visible",
       "members": { "owner": "adult", "other": "adult" },
       "steps": [

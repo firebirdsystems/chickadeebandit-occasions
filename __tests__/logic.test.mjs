@@ -2,9 +2,17 @@ import { describe, it, expect } from "vitest";
 import {
   parseDateParts, makeDate, daysInMonth, nextOccurrence, daysUntil,
   yearsAtNext, countdownLabel, upcoming, contactSuggestions, kindMeta,
+  isMilestone, occasionTarget, daysUntilOccasion, passedMilestones, countdownRows,
+  localDateKey, MILESTONE_KIND,
 } from "../src/logic.js";
 
 const at = (y, m, d) => new Date(y, m - 1, d, 9, 0, 0); // a "now" fixed at 9am local
+
+describe("localDateKey", () => {
+  it("formats the caller's local calendar date", () => {
+    expect(localDateKey(at(2026, 7, 5))).toBe("2026-07-05");
+  });
+});
 
 describe("parseDateParts", () => {
   it("parses YYYY-MM-DD with year", () => {
@@ -93,6 +101,10 @@ describe("countdownLabel", () => {
     expect(countdownLabel(1)).toBe("Tomorrow");
     expect(countdownLabel(3)).toBe("In 3 days");
   });
+  it("labels a passed one-off milestone", () => {
+    expect(countdownLabel(-1)).toBe("Passed");
+    expect(countdownLabel(-400)).toBe("Passed");
+  });
   it("labels farther dates in weeks/months", () => {
     expect(countdownLabel(21)).toBe("In 3 weeks");
     expect(countdownLabel(90)).toBe("In 3 months");
@@ -113,6 +125,70 @@ describe("upcoming", () => {
   });
   it("drops rows with an invalid month/day", () => {
     expect(upcoming(rows, at(2026, 1, 1)).some((o) => o.id === "c")).toBe(false);
+  });
+});
+
+describe("milestones (one-off countdowns)", () => {
+  const trip = {
+    id: "trip", title: "Disney", kind: MILESTONE_KIND,
+    event_month: 3, event_day: 15, event_year: 2026,
+    visibility: "everyone", countdown: 1,
+  };
+  const birthday = {
+    id: "bday", title: "Mom", kind: "birthday",
+    event_month: 1, event_day: 5, event_year: 1959,
+    visibility: "everyone", countdown: 1,
+  };
+
+  it("targets the stored year instead of recurring annually", () => {
+    expect(occasionTarget(trip, at(2026, 1, 1)).getFullYear()).toBe(2026);
+    expect(daysUntilOccasion(trip, at(2026, 3, 3))).toBe(12);
+  });
+  it("does not roll a passed milestone into next year", () => {
+    expect(daysUntilOccasion(trip, at(2026, 3, 16))).toBe(-1);
+    expect(occasionTarget(trip, at(2027, 1, 1)).getFullYear()).toBe(2026);
+  });
+  it("has no target without a year", () => {
+    expect(occasionTarget({ ...trip, event_year: null }, at(2026, 1, 1))).toBeNull();
+    expect(daysUntilOccasion({ ...trip, event_year: null }, at(2026, 1, 1))).toBeNull();
+  });
+  it("still rolls non-milestone kinds to the next year", () => {
+    expect(occasionTarget(birthday, at(2026, 6, 1)).getFullYear()).toBe(2027);
+  });
+  it("reports no age/years for a milestone", () => {
+    expect(upcoming([trip], at(2026, 1, 1))[0]._years).toBeNull();
+  });
+  it("moves passed milestones out of upcoming and into passedMilestones", () => {
+    const now = at(2026, 3, 16);
+    expect(upcoming([trip, birthday], now).map((o) => o.id)).toEqual(["bday"]);
+    expect(passedMilestones([trip, birthday], now).map((o) => o.id)).toEqual(["trip"]);
+  });
+  it("keeps a recurring occasion out of passedMilestones entirely", () => {
+    expect(passedMilestones([birthday], at(2026, 6, 1))).toEqual([]);
+  });
+  it("identifies the kind", () => {
+    expect(isMilestone(trip)).toBe(true);
+    expect(isMilestone(birthday)).toBe(false);
+    expect(isMilestone(null)).toBe(false);
+  });
+});
+
+describe("countdownRows (what the shared surfaces show)", () => {
+  const now = at(2026, 1, 1);
+  const base = { kind: MILESTONE_KIND, event_month: 3, event_day: 15, event_year: 2026 };
+  const rows = [
+    { ...base, id: "shared", title: "Disney", visibility: "everyone", countdown: 1 },
+    { ...base, id: "private", title: "Surprise", visibility: "private", countdown: 1, event_day: 10 },
+    { ...base, id: "optedout", title: "Dentist", visibility: "everyone", countdown: 0, event_day: 11 },
+    { ...base, id: "passed", title: "Last year", visibility: "everyone", countdown: 1, event_year: 2025 },
+    { id: "bday", title: "Mom", kind: "birthday", event_month: 2, event_day: 1, event_year: 1959, visibility: "everyone", countdown: 1 },
+  ];
+
+  it("shows only opted-in, everyone-visible, not-yet-passed rows, soonest first", () => {
+    expect(countdownRows(rows, now).map((o) => o.id)).toEqual(["bday", "shared"]);
+  });
+  it("respects the limit", () => {
+    expect(countdownRows(rows, now, 1).map((o) => o.id)).toEqual(["bday"]);
   });
 });
 
