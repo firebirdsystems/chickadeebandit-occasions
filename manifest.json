@@ -1,15 +1,25 @@
 {
   "id": "occasions",
   "name": "Occasions",
-  "version": "1.2.0",
-  "description": "Birthdays, anniversaries, memorials, holidays, and gift reminders — one shared list of the dates your household doesn't want to miss, with countdowns to what's coming up. Pull dates in from your Contacts, or add your own.",
+  "version": "1.3.0",
+  "description": "Birthdays, anniversaries, memorials, holidays, and gift reminders \u2014 one shared list of the dates your household doesn't want to miss, with countdowns to what's coming up. Pull dates in from your Contacts, or add your own.",
   "entrypoint": "index.html",
   "runtime": "static",
   "category": "general",
-  "tags": ["dates", "birthdays", "anniversaries", "reminders", "occasions", "gifts"],
-  "icon": "🎂",
+  "tags": [
+    "dates",
+    "birthdays",
+    "anniversaries",
+    "reminders",
+    "occasions",
+    "gifts"
+  ],
+  "icon": "\ud83c\udf82",
   "data_access": {
-    "reads": ["family.members", "app.contacts.contact_dates"],
+    "reads": [
+      "family.members",
+      "app.contacts.contact_dates"
+    ],
     "writes": []
   },
   "permissions": {
@@ -17,17 +27,30 @@
     "requires_approval": false
   },
   "storage": "db",
-  "db_plaintext_columns": ["kind", "source", "event_month", "event_day", "event_year", "lead_days", "countdown"],
+  "db_plaintext_columns": [
+    "kind",
+    "source",
+    "event_month",
+    "event_day",
+    "event_year",
+    "lead_days",
+    "countdown"
+  ],
   "row_policies": {
     "occasions": {
       "kind": "owner_or_visibility",
       "member_column": "member_id",
       "visibility_column": "visibility",
-      "everyone_values": ["everyone"],
+      "everyone_values": [
+        "everyone"
+      ],
       "write_visibility_scoped": true
     }
   },
-  "required_capabilities": ["cron", "email"],
+  "required_capabilities": [
+    "cron",
+    "email"
+  ],
   "date_reminders": {
     "table": "occasions",
     "month_column": "event_month",
@@ -35,23 +58,30 @@
     "lead_days_column": "lead_days",
     "title_column": "title",
     "kind_column": "kind",
-    "one_shot_kind_values": ["milestone"],
+    "one_shot_kind_values": [
+      "milestone"
+    ],
     "one_shot_year_column": "event_year",
     "owner_column": "member_id",
     "visibility_column": "visibility",
-    "everyone_values": ["everyone"],
+    "everyone_values": [
+      "everyone"
+    ],
     "last_reminded_column": "last_reminded_at"
   },
   "glance": {
     "source": {
       "kind": "sql",
-      "query": "SELECT title AS title, CASE WHEN kind = 'milestone' THEN printf('%04d-%02d-%02d', event_year, event_month, event_day) WHEN printf('%02d-%02d', event_month, event_day) >= substr(:today, 6, 5) THEN printf('%04d-%02d-%02d', CAST(substr(:today, 1, 4) AS INTEGER), event_month, event_day) ELSE printf('%04d-%02d-%02d', CAST(substr(:today, 1, 4) AS INTEGER) + 1, event_month, event_day) END AS at FROM app_occasions__occasions WHERE countdown = 1 AND visibility = 'everyone' AND (kind <> 'milestone' OR (event_year IS NOT NULL AND printf('%04d-%02d-%02d', event_year, event_month, event_day) >= :today)) ORDER BY at LIMIT 3"
+      "query": "SELECT title AS title, emoji AS emoji, member_id AS member_id, CASE WHEN kind = 'milestone' THEN printf('%04d-%02d-%02d', event_year, event_month, event_day) WHEN printf('%02d-%02d', event_month, event_day) >= substr(:today, 6, 5) THEN printf('%04d-%02d-%02d', CAST(substr(:today, 1, 4) AS INTEGER), event_month, event_day) ELSE printf('%04d-%02d-%02d', CAST(substr(:today, 1, 4) AS INTEGER) + 1, event_month, event_day) END AS at FROM app_occasions__occasions WHERE countdown = 1 AND visibility = 'everyone' AND (kind <> 'milestone' OR (event_year IS NOT NULL AND printf('%04d-%02d-%02d', event_year, event_month, event_day) >= :today)) ORDER BY at LIMIT 3"
     },
     "display": {
       "template": "list",
       "title": "title",
-      "when": "at"
-    }
+      "when": "at",
+      "icon": "emoji",
+      "owner": "member_id"
+    },
+    "ambient_card": "countdown"
   },
   "agenda": {
     "kind": "event",
@@ -61,13 +91,17 @@
       "query": "SELECT id AS id, title AS title, :today AS when_at FROM app_occasions__occasions WHERE event_month = CAST(strftime('%m', :today) AS INTEGER) AND event_day = CAST(strftime('%d', :today) AS INTEGER) AND (kind <> 'milestone' OR event_year = CAST(strftime('%Y', :today) AS INTEGER)) LIMIT 20"
     }
   },
-  "nav": { "label": "Occasions" },
+  "nav": {
+    "label": "Occasions"
+  },
   "resource_limits": {
     "max_db_bytes": 52428800
   },
   "ai_access": {
     "allowed": true,
     "mode": "read",
-    "db_exports": ["upcoming_occasions"]
+    "db_exports": [
+      "upcoming_occasions"
+    ]
   }
 }
