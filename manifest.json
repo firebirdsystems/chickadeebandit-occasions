@@ -1,5 +1,6 @@
 {
   "id": "occasions",
+  "contexts": ["household", "shared_space"],
   "name": "Occasions",
   "version": "1.3.0",
   "description": "Birthdays, anniversaries, memorials, holidays, and gift reminders \u2014 one shared list of the dates your household doesn't want to miss, with countdowns to what's coming up. Pull dates in from your Contacts, or add your own.",
