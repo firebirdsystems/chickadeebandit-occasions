@@ -1,0 +1,14 @@
+-- Per-occasion reminder on/off switch (1.3.1).
+--
+-- Until now the "Email reminder" picker only chose a lead time — every value
+-- still sent an email, with no way to say "don't email me about this one".
+-- `remind` is that switch: 1 (the default, so every existing row keeps its
+-- current behavior) means the date_reminders cron may email a nudge; 0 means
+-- never, whatever lead_days holds.
+--
+-- The hub reads this via the manifest date_reminders.enabled_column field: a
+-- falsy cell short-circuits evaluation for that row (packages/hub …
+-- date-reminders.ts evaluateReminderRow). It's a plaintext INTEGER (declared
+-- in manifest.db_plaintext_columns) so the cron's trusted SELECT sees it
+-- without decryption, matching lead_days.
+ALTER TABLE app_occasions__occasions ADD COLUMN remind INTEGER NOT NULL DEFAULT 1 CHECK (remind IN (0, 1));

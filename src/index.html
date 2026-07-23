@@ -197,15 +197,15 @@ async function loadOccasions() {
     const soon = new Date();
     const trip = new Date(soon.getTime() + 12 * 86400000);
     occasions = [
-      { id: "d1", member_id: "demo-1", kind: "birthday", title: "Mom", event_month: soon.getMonth() + 1, event_day: Math.min(soon.getDate() + 3, 28), event_year: 1959, visibility: "everyone", notes: "", gift_idea: "Gardening gloves", lead_days: 3, source: "manual", source_ref: "", emoji: "", countdown: 0, created_at: nowIso(), updated_at: nowIso() },
-      { id: "d2", member_id: "demo-2", kind: "anniversary", title: "Our Anniversary", event_month: 6, event_day: 21, event_year: 2010, visibility: "everyone", notes: "", gift_idea: "", lead_days: 7, source: "manual", source_ref: "", emoji: "", countdown: 0, created_at: nowIso(), updated_at: nowIso() },
-      { id: "d3", member_id: "demo-1", kind: "holiday", title: "Diwali", event_month: 11, event_day: 1, event_year: null, visibility: "everyone", notes: "", gift_idea: "", lead_days: 3, source: "manual", source_ref: "", emoji: "", countdown: 0, created_at: nowIso(), updated_at: nowIso() },
-      { id: "d4", member_id: "demo-1", kind: MILESTONE_KIND, title: "Disney trip", event_month: trip.getMonth() + 1, event_day: trip.getDate(), event_year: trip.getFullYear(), visibility: "everyone", notes: "", gift_idea: "", lead_days: 7, source: "manual", source_ref: "", emoji: "🎢", countdown: 1, created_at: nowIso(), updated_at: nowIso() },
+      { id: "d1", member_id: "demo-1", kind: "birthday", title: "Mom", event_month: soon.getMonth() + 1, event_day: Math.min(soon.getDate() + 3, 28), event_year: 1959, visibility: "everyone", notes: "", gift_idea: "Gardening gloves", lead_days: 3, remind: 1, source: "manual", source_ref: "", emoji: "", countdown: 0, created_at: nowIso(), updated_at: nowIso() },
+      { id: "d2", member_id: "demo-2", kind: "anniversary", title: "Our Anniversary", event_month: 6, event_day: 21, event_year: 2010, visibility: "everyone", notes: "", gift_idea: "", lead_days: 7, remind: 1, source: "manual", source_ref: "", emoji: "", countdown: 0, created_at: nowIso(), updated_at: nowIso() },
+      { id: "d3", member_id: "demo-1", kind: "holiday", title: "Diwali", event_month: 11, event_day: 1, event_year: null, visibility: "everyone", notes: "", gift_idea: "", lead_days: 3, remind: 0, source: "manual", source_ref: "", emoji: "", countdown: 0, created_at: nowIso(), updated_at: nowIso() },
+      { id: "d4", member_id: "demo-1", kind: MILESTONE_KIND, title: "Disney trip", event_month: trip.getMonth() + 1, event_day: trip.getDate(), event_year: trip.getFullYear(), visibility: "everyone", notes: "", gift_idea: "", lead_days: 7, remind: 1, source: "manual", source_ref: "", emoji: "🎢", countdown: 1, created_at: nowIso(), updated_at: nowIso() },
     ];
     return;
   }
   const res = await db(
-    "SELECT id, member_id, kind, title, event_month, event_day, event_year, visibility, notes, gift_idea, lead_days, source, source_ref, emoji, countdown, created_at, updated_at FROM app_occasions__occasions",
+    "SELECT id, member_id, kind, title, event_month, event_day, event_year, visibility, notes, gift_idea, lead_days, remind, source, source_ref, emoji, countdown, created_at, updated_at FROM app_occasions__occasions",
   );
   occasions = res.rows ?? [];
 }
@@ -250,9 +250,9 @@ async function saveOccasion(fields, existingId) {
     try {
       await db(
         `UPDATE app_occasions__occasions
-         SET kind=?, title=?, event_month=?, event_day=?, event_year=?, visibility=?, notes=?, gift_idea=?, lead_days=?, emoji=?, countdown=?, updated_at=?
+         SET kind=?, title=?, event_month=?, event_day=?, event_year=?, visibility=?, notes=?, gift_idea=?, lead_days=?, remind=?, emoji=?, countdown=?, updated_at=?
          WHERE id=?`,
-        [fields.kind, fields.title, fields.event_month, fields.event_day, fields.event_year, fields.visibility, fields.notes, fields.gift_idea, fields.lead_days, fields.emoji, fields.countdown, now, existingId],
+        [fields.kind, fields.title, fields.event_month, fields.event_day, fields.event_year, fields.visibility, fields.notes, fields.gift_idea, fields.lead_days, fields.remind, fields.emoji, fields.countdown, now, existingId],
       );
     } catch (e) {
       if (idx !== -1 && prev) occasions[idx] = prev;
@@ -273,9 +273,9 @@ async function saveOccasion(fields, existingId) {
     try {
       await db(
         `INSERT INTO app_occasions__occasions
-          (id, member_id, kind, title, event_month, event_day, event_year, visibility, notes, gift_idea, lead_days, source, source_ref, emoji, countdown, created_at, updated_at)
-         VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`,
-        [row.id, row.member_id, row.kind, row.title, row.event_month, row.event_day, row.event_year, row.visibility, row.notes, row.gift_idea, row.lead_days, row.source, row.source_ref, row.emoji, row.countdown, now, now],
+          (id, member_id, kind, title, event_month, event_day, event_year, visibility, notes, gift_idea, lead_days, remind, source, source_ref, emoji, countdown, created_at, updated_at)
+         VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`,
+        [row.id, row.member_id, row.kind, row.title, row.event_month, row.event_day, row.event_year, row.visibility, row.notes, row.gift_idea, row.lead_days, row.remind, row.source, row.source_ref, row.emoji, row.countdown, now, now],
       );
     } catch (e) {
       occasions = occasions.filter((o) => o.id !== row.id);
@@ -443,12 +443,17 @@ const LEAD_CHOICES = [
   { value: 14, label: "2 weeks before" },
 ];
 
-function leadOptions(current) {
+/** The picker doubles as the on/off switch: value "off" means don't email at
+ *  all (remind = 0), any numeric value is a lead time with email on. `off` is
+ *  true when the occasion's remind flag is 0. */
+function leadOptions(current, off) {
   const cur = Number.isFinite(Number(current)) ? Number(current) : 3;
   const choices = LEAD_CHOICES.some((c) => c.value === cur)
     ? LEAD_CHOICES
     : [...LEAD_CHOICES, { value: cur, label: `${cur} days before` }].sort((a, b) => a.value - b.value);
-  return choices.map((c) => `<option value="${c.value}" ${c.value === cur ? "selected" : ""}>${c.label}</option>`).join("");
+  const offOption = `<option value="off" ${off ? "selected" : ""}>No email reminder</option>`;
+  const leadOpts = choices.map((c) => `<option value="${c.value}" ${!off && c.value === cur ? "selected" : ""}>${c.label}</option>`).join("");
+  return offOption + leadOpts;
 }
 
 function openEditor(existing) {
@@ -483,7 +488,7 @@ function openEditor(existing) {
       </div>
       <div class="field">
         <label for="f-lead">Email reminder</label>
-        <select id="f-lead">${leadOptions(o?.lead_days ?? 3)}</select>
+        <select id="f-lead">${leadOptions(o?.lead_days ?? 3, o ? Number(o.remind) === 0 : false)}</select>
         ${reminderStatus && !reminderStatus.entitled
           ? `<span class="tiny muted">Saved now, emailed once your household unlocks the ${esc(reminderStatus.bundle ?? "premium")} bundle.</span>`
           : ""}
@@ -555,7 +560,11 @@ function submitEditor(existingId, carry = {}) {
   const isPrivate = document.getElementById("f-private").checked;
   const emoji = document.getElementById("f-emoji").value.trim();
   const countdown = document.getElementById("f-countdown").checked && !isPrivate ? 1 : 0;
-  const leadRaw = Number(document.getElementById("f-lead").value);
+  const leadValue = document.getElementById("f-lead").value;
+  const remind = leadValue === "off" ? 0 : 1;
+  // Keep a sane lead time on the row even when email is off, so turning it back
+  // on later restores a real cadence rather than surprising the user with 0.
+  const leadRaw = Number(leadValue);
   const leadDays = Number.isFinite(leadRaw) && leadRaw >= 0 ? leadRaw : 3;
 
   const m = /^(\d{4})-(\d{2})-(\d{2})$/.exec(dateStr);
@@ -584,6 +593,7 @@ function submitEditor(existingId, carry = {}) {
     notes,
     gift_idea: gift,
     lead_days: leadDays,
+    remind,
     emoji,
     countdown,
     source: carry.source ?? "manual",
@@ -606,6 +616,7 @@ function addFromSuggestion(key) {
     notes: "",
     gift_idea: "",
     lead_days: 3,
+    remind: 1,
     emoji: "",
     countdown: 0,
     source: "contacts",
