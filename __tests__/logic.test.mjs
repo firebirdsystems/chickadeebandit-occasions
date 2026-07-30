@@ -217,4 +217,11 @@ describe("kindMeta", () => {
     expect(kindMeta("birthday").icon).toBe("🎂");
     expect(kindMeta("nonsense").label).toBe("Other");
   });
+  // The label is what members read; the stored value is what the glance/agenda
+  // SQL and manifest.date_reminders.one_shot_kind_values key off — renaming the
+  // label must never rename the value.
+  it("labels the one-off kind for humans while keeping its stored value", () => {
+    expect(MILESTONE_KIND).toBe("milestone");
+    expect(kindMeta(MILESTONE_KIND).label).toBe("One-time event");
+  });
 });

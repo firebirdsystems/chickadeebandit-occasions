@@ -13,12 +13,15 @@ export const KINDS = [
   { value: "memorial",    label: "Memorial",    icon: "🕊️" },
   { value: "holiday",     label: "Holiday",     icon: "🎉" },
   { value: "gift",        label: "Gift",        icon: "🎁" },
-  { value: "milestone",   label: "Countdown",   icon: "⏳" },
+  { value: "milestone",   label: "One-time event", icon: "⏳" },
   { value: "other",       label: "Other",       icon: "📌" },
 ];
 
 /** The one-off kind: a single dated event ("Disney trip"), not an annual
- *  recurrence. Its event_year is the target year, not an origin year. */
+ *  recurrence. Its event_year is the target year, not an origin year.
+ *  The stored value stays "milestone" — the glance/agenda SQL and the
+ *  manifest's date_reminders.one_shot_kind_values key off it — while the
+ *  label above is what members actually read. */
 export const MILESTONE_KIND = "milestone";
 
 export function isMilestone(occasion) {

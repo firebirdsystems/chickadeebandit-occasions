@@ -89,6 +89,13 @@
     .section-head:first-of-type { margin-top: 6px; }
     .suggest { display: flex; align-items: center; gap: 10px; padding: 9px 12px; border: 1px dashed var(--border-mid); border-radius: var(--radius); }
     .suggest .occ-body { font-size: .88rem; }
+    .passed { margin: 18px 2px 8px; }
+    .passed > summary {
+      cursor: pointer; color: var(--muted); font-size: .76rem; font-weight: 800;
+      text-transform: uppercase; letter-spacing: .05em; padding: 4px 2px; list-style-position: inside;
+    }
+    .passed > summary:hover { color: var(--text); }
+    .passed[open] > summary { margin-bottom: 8px; }
 
     .empty { color: var(--muted); text-align: center; padding: 34px 16px; }
     .error { background: var(--red-soft); color: var(--red); padding: 9px 12px; border-radius: 8px; margin-bottom: 10px; font-size: .86rem; }
@@ -144,6 +151,7 @@ let reminderStatus = null; // { entitled, missing_capabilities, bundle } | null 
 let error = "";
 let notice = "";
 let modalEl = null;
+let passedOpen = false; // the Passed disclosure starts collapsed on every load
 
 function nowIso() { return new Date().toISOString(); }
 function memberName(id) { return memberMap.get(id)?.name ?? "Someone"; }
@@ -378,14 +386,18 @@ function renderSuggestions() {
   `;
 }
 
-/** One-off milestones whose day has come and gone. They aren't deleted (a past
- *  trip is still a record of the year), just moved out of the countdown list. */
+/** One-off events whose day has come and gone. They aren't deleted (a past trip
+ *  is still a record of the year) and nothing expires them, so they're tucked
+ *  behind a collapsed disclosure instead of growing the list forever. Delete a
+ *  row from its editor when you're done with it. */
 function renderPassed() {
   const past = passedMilestones(occasions);
   if (!past.length) return "";
   return `
-    <div class="section-head"><h2 class="muted">Passed</h2></div>
-    <div class="stack">${past.map(renderOccasion).join("")}</div>
+    <details class="passed" ${passedOpen ? "open" : ""}>
+      <summary data-passed>Passed (${past.length})</summary>
+      <div class="stack">${past.map(renderOccasion).join("")}</div>
+    </details>
   `;
 }
 
@@ -471,11 +483,12 @@ function openEditor(existing) {
         <div class="field">
           <label for="f-kind">Type</label>
           <select id="f-kind">${kindOptions}</select>
+          <span class="tiny muted">Every type repeats each year — except ⏳ One-time event, which happens once.</span>
         </div>
         <div class="field">
           <label for="f-date">Date</label>
           <input id="f-date" type="date" value="${esc(isoForInput(o))}" required />
-          <span class="tiny muted" id="f-date-hint" hidden>A countdown is a one-off date — pick the year too.</span>
+          <span class="tiny muted" id="f-date-hint" hidden>Pick the year too — this date is the one it counts down to.</span>
         </div>
       </div>
       <div class="checkrow" id="f-trackyear-row">
@@ -507,7 +520,7 @@ function openEditor(existing) {
       </div>
       <div class="checkrow">
         <input type="checkbox" id="f-countdown" ${Number(o?.countdown) === 1 ? "checked" : ""} />
-        <label for="f-countdown">Count down on shared screens (dashboard, kiosk, home-screen widget)</label>
+        <label for="f-countdown">Show on shared screens (dashboard, kiosk, home-screen widget)</label>
       </div>
       <span class="tiny muted" id="f-countdown-hint" hidden>
         Shared screens only show occasions everyone can see, so a private occasion counts down inside this app only.
@@ -626,6 +639,10 @@ function addFromSuggestion(key) {
 
 /* ── Events ────────────────────────────────────────────────────────────────── */
 document.addEventListener("click", (e) => {
+  // The Passed disclosure toggles itself natively; we only record the state so
+  // the next render (e.g. after deleting a passed row) doesn't slam it shut.
+  const summary = e.target.closest("summary[data-passed]");
+  if (summary) { passedOpen = !summary.parentElement.open; return; }
   const t = e.target.closest("button");
   if (!t) return;
   if (t.hasAttribute("data-add")) { openEditor(null); return; }
