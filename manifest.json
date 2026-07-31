@@ -49,6 +49,14 @@
       "write_visibility_scoped": true
     }
   },
+  "member_references": {
+    "occasions": {
+      "column": "member_id",
+      "on_removed": "delete",
+      "file_id_column": "photo_file_id",
+      "only_when": { "column": "visibility", "values": ["private"] }
+    }
+  },
   "required_capabilities": [
     "cron",
     "email"

@@ -46,4 +46,35 @@ describe("manifest.json", () => {
     expect(p?.visibility_column).toBe("visibility");
     expect(p?.write_visibility_scoped).toBe(true);
   });
+
+  // Member removal, in two halves — the split matters and neither whole-table
+  // action is right:
+  //
+  // `visibility = 'everyone'` occasions are household dates that outlive
+  // whoever typed them, and any member can still edit or delete them
+  // (write_visibility_scoped), so they SURVIVE with a stale owner id. A blanket
+  // "delete" would wipe the family's birthdays because one person left.
+  //
+  // `visibility = 'private'` occasions are readable by their owner alone — the
+  // row policy grants no other member a path to them and there is no adult
+  // bypass — so once the owner is off the roster nobody can ever see or remove
+  // them again. They are deleted, and their photo reclaimed with them.
+  //
+  // "null" is NOT an option here whatever the semantics: member_id is TEXT NOT
+  // NULL (001_init.sql), so the cleanup's raw `SET member_id = NULL` raises a
+  // constraint failure that propagates out of roster removal and leaves the
+  // departing member stuck mid-delete forever.
+  it("deletes only the unreachable private occasions on member removal", () => {
+    expect(manifest.member_references?.occasions).toEqual({
+      column: "member_id",
+      on_removed: "delete",
+      file_id_column: "photo_file_id",
+      only_when: { column: "visibility", values: ["private"] },
+    });
+  });
+
+  it("only ever writes the two visibility values only_when relies on", () => {
+    const html = readFileSync(join(__dirname, "../src/index.html"), "utf-8");
+    expect(html).toMatch(/visibility:\s*isPrivate\s*\?\s*"private"\s*:\s*"everyone"/);
+  });
 });
