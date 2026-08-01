@@ -263,3 +263,12 @@ export function contactSuggestions(contactDates, existing) {
   }
   return out;
 }
+
+/**
+ * Fields the in-app search matches against (see hub-sdk `searchMatch`).
+ * The gift idea and notes count as well as the title — "what were we
+ * getting Mia" is a note, and it is the reason to open this app at all.
+ */
+export function searchableFields(item) {
+  return [item.title, item.notes, item.gift_idea, item.kind];
+}

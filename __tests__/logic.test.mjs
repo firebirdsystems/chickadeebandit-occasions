@@ -3,7 +3,7 @@ import {
   parseDateParts, makeDate, daysInMonth, nextOccurrence, daysUntil,
   yearsAtNext, countdownLabel, upcoming, contactSuggestions, kindMeta,
   isMilestone, occasionTarget, daysUntilOccasion, passedMilestones, countdownRows,
-  localDateKey, MILESTONE_KIND,
+  localDateKey, MILESTONE_KIND, searchableFields,
 } from "../src/logic.js";
 
 const at = (y, m, d) => new Date(y, m - 1, d, 9, 0, 0); // a "now" fixed at 9am local
@@ -223,5 +223,15 @@ describe("kindMeta", () => {
   it("labels the one-off kind for humans while keeping its stored value", () => {
     expect(MILESTONE_KIND).toBe("milestone");
     expect(kindMeta(MILESTONE_KIND).label).toBe("One-time event");
+  });
+});
+
+describe("searchableFields", () => {
+  it("matches on the gift idea and notes, not just the title", () => {
+    const fields = searchableFields({
+      title: "Mia's birthday", notes: "turning 12", gift_idea: "climbing shoes", kind: "birthday",
+    });
+    expect(fields).toContain("climbing shoes");
+    expect(fields).toContain("turning 12");
   });
 });
