@@ -28,6 +28,49 @@
     "requires_approval": false
   },
   "storage": "db",
+  "automation_actions": {
+    "add_occasion": {
+      "title": "Record a date to remember",
+      "description": "Add a birthday, anniversary or milestone when another app's event carries one - a new contact, a new family record, a trip that got booked.",
+      "params": {
+        "member": { "type": "member", "label": "Recorded for", "required": true },
+        "title": { "type": "text", "label": "Who or what", "required": true },
+        "month": { "type": "integer", "label": "Month (1-12)", "required": true, "min": 1, "max": 12 },
+        "day": { "type": "integer", "label": "Day of month", "required": true, "min": 1, "max": 31 },
+        "kind": {
+          "type": "text",
+          "label": "Kind",
+          "default": "birthday",
+          "options": ["birthday", "anniversary", "memorial", "holiday", "gift", "other"]
+        }
+      },
+      "dedupe": { "table": "occasions", "column": "source_event_id" },
+      "steps": [
+        {
+          "op": "insert",
+          "table": "occasions",
+          "values": {
+            "id": "$uuid",
+            "member_id": ":member",
+            "kind": ":kind",
+            "title": ":title",
+            "event_month": ":month",
+            "event_day": ":day",
+            "source": "manual",
+            "created_at": "$now",
+            "updated_at": "$now",
+            "source_event_id": "$event_id"
+          }
+        }
+      ]
+    }
+  },
+  "publishes": [
+    "occasion.created"
+  ],
+  "publish_acls": {
+    "occasion.created": { "require_role": "member" }
+  },
   "db_plaintext_columns": [
     "kind",
     "source",

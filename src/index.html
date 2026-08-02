@@ -148,6 +148,7 @@ import {
 const CONTEXT = window.__CONTEXT_URL ?? "";
 const DB = window.__DB_URL ?? "";
 const HUB_MEMBER = window.__CURRENT_MEMBER ?? null;
+const EVENTS = window.__EVENTS_URL ?? "";
 
 let members = [];
 let memberMap = new Map();
@@ -175,6 +176,22 @@ async function db(sql, params = []) {
   const json = await res.json();
   if (json.error) throw new Error(json.error);
   return json;
+}
+
+/* ── Event bus ─────────────────────────────────────────────────────────────── */
+// Best-effort: the row is already written, so a failed publish is not fatal —
+// this must never throw into the insert's catch and roll the optimistic row back.
+async function publishEvent(type, subjectId, payload = {}) {
+  if (!EVENTS) return;
+  try {
+    await fetch(EVENTS, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ type, subject_id: subjectId, payload }),
+    });
+  } catch {
+    // ignored on purpose
+  }
 }
 
 /* ── Loading ───────────────────────────────────────────────────────────────── */
@@ -293,6 +310,18 @@ async function saveOccasion(fields, existingId) {
          VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`,
         [row.id, row.member_id, row.kind, row.title, row.event_month, row.event_day, row.event_year, row.visibility, row.notes, row.gift_idea, row.lead_days, row.remind, row.source, row.source_ref, row.emoji, row.countdown, now, now],
       );
+      // Only shared occasions reach the bus: a private row is the owner's alone
+      // (a surprise-gift reminder), and every member with this app can read the
+      // event feed.
+      if (row.visibility === "everyone") {
+        await publishEvent("occasion.created", row.id, {
+          title: row.title,
+          kind: row.kind,
+          event_month: row.event_month,
+          event_day: row.event_day,
+          member_id: row.member_id,
+        });
+      }
     } catch (e) {
       occasions = occasions.filter((o) => o.id !== row.id);
       showError(e.message);
