@@ -1,8 +1,11 @@
 {
   "id": "occasions",
-  "contexts": ["household", "shared_space"],
+  "contexts": [
+    "household",
+    "shared_space"
+  ],
   "name": "Occasions",
-  "version": "1.0.0",
+  "version": "1.1.0",
   "description": "Birthdays, anniversaries, memorials, holidays, and gift reminders \u2014 one shared list of the dates your household doesn't want to miss, with countdowns to what's coming up. Pull dates in from your Contacts, or add your own.",
   "entrypoint": "index.html",
   "runtime": "static",
@@ -33,18 +36,48 @@
       "title": "Record a date to remember",
       "description": "Add a birthday, anniversary or milestone when another app's event carries one - a new contact, a new family record, a trip that got booked.",
       "params": {
-        "member": { "type": "member", "label": "Recorded for", "required": true },
-        "title": { "type": "text", "label": "Who or what", "required": true },
-        "month": { "type": "integer", "label": "Month (1-12)", "required": true, "min": 1, "max": 12 },
-        "day": { "type": "integer", "label": "Day of month", "required": true, "min": 1, "max": 31 },
+        "member": {
+          "type": "member",
+          "label": "Recorded for",
+          "required": true
+        },
+        "title": {
+          "type": "text",
+          "label": "Who or what",
+          "required": true
+        },
+        "month": {
+          "type": "integer",
+          "label": "Month (1-12)",
+          "required": true,
+          "min": 1,
+          "max": 12
+        },
+        "day": {
+          "type": "integer",
+          "label": "Day of month",
+          "required": true,
+          "min": 1,
+          "max": 31
+        },
         "kind": {
           "type": "text",
           "label": "Kind",
           "default": "birthday",
-          "options": ["birthday", "anniversary", "memorial", "holiday", "gift", "other"]
+          "options": [
+            "birthday",
+            "anniversary",
+            "memorial",
+            "holiday",
+            "gift",
+            "other"
+          ]
         }
       },
-      "dedupe": { "table": "occasions", "column": "source_event_id" },
+      "dedupe": {
+        "table": "occasions",
+        "column": "source_event_id"
+      },
       "steps": [
         {
           "op": "insert",
@@ -69,7 +102,9 @@
     "occasion.created"
   ],
   "publish_acls": {
-    "occasion.created": { "require_role": "member" }
+    "occasion.created": {
+      "require_role": "member"
+    }
   },
   "db_plaintext_columns": [
     "kind",
@@ -92,12 +127,22 @@
       "write_visibility_scoped": true
     }
   },
+  "delete_file_columns": {
+    "occasions": [
+      "photo_file_id"
+    ]
+  },
   "member_references": {
     "occasions": {
       "column": "member_id",
       "on_removed": "delete",
       "file_id_column": "photo_file_id",
-      "only_when": { "column": "visibility", "values": ["private"] }
+      "only_when": {
+        "column": "visibility",
+        "values": [
+          "private"
+        ]
+      }
     }
   },
   "required_capabilities": [
