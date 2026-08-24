@@ -5,7 +5,7 @@
     "shared_space"
   ],
   "name": "Occasions",
-  "version": "1.1.0",
+  "version": "1.2.0",
   "description": "Birthdays, anniversaries, memorials, holidays, and gift reminders \u2014 one shared list of the dates your household doesn't want to miss, with countdowns to what's coming up. Pull dates in from your Contacts, or add your own.",
   "entrypoint": "index.html",
   "runtime": "static",
@@ -98,6 +98,22 @@
       ]
     }
   },
+  "suggested_automations": [
+    {
+      "title": "Record vehicle renewals as dates to remember",
+      "description": "A registration or inspection date added in vehicle maintenance lands on the occasions list with a countdown, tied to the member who owns the vehicle. The entry is titled by renewal type — rename it to the vehicle after it appears if you track more than one.",
+      "trigger_event": "vehicle.renewal_added",
+      "target_app_id": "occasions",
+      "action_id": "add_occasion",
+      "param_map": {
+        "member": { "kind": "payload_field", "value": "member_id" },
+        "title": { "kind": "payload_field", "value": "kind" },
+        "month": { "kind": "payload_field", "value": "event_month" },
+        "day": { "kind": "payload_field", "value": "event_day" },
+        "kind": { "kind": "const", "value": "other" }
+      }
+    }
+  ],
   "publishes": [
     "occasion.created"
   ],
