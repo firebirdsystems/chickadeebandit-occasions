@@ -139,10 +139,19 @@
 </div>
 
 <script type="module">
-import { esc, isAdult, hubConfirm, searchMatch } from "/hub-sdk.js";
+import { esc, isAdult, hubConfirm, searchMatch, hubToday } from "/hub-sdk.js";
+
+// The household's calendar day as a Date, for the pure helpers in logic.js that
+// need one. Occasion countdowns compare a STORED event date against "today", and
+// the create form already rejects a milestone dated before hubToday() (see
+// below) — so deriving the countdown from the device clock would let one
+// calendar validate the write and a different one decide whether the same date
+// has passed. Noon keeps a DST shift from tipping it into an adjacent day.
+const hubDay = () => new Date(`${hubToday()}T12:00:00`);
+
 import {
   KINDS, kindMeta, upcoming, passedMilestones, countdownLabel, contactSuggestions,
-  daysInMonth, localDateKey, MILESTONE_KIND, searchableFields,
+  daysInMonth, MILESTONE_KIND, searchableFields,
 } from "./logic.js";
 
 const CONTEXT = window.__CONTEXT_URL ?? "";
@@ -428,7 +437,7 @@ function renderSuggestions() {
  *  behind a collapsed disclosure instead of growing the list forever. Delete a
  *  row from its editor when you're done with it. */
 function renderPassed() {
-  const past = passedMilestones(occasions);
+  const past = passedMilestones(occasions, hubDay());
   if (!past.length) return "";
   return `
     <details class="passed" ${passedOpen ? "open" : ""}>
@@ -441,7 +450,7 @@ function renderPassed() {
 // Owns the filtering and the empty states, so the keystroke handler can refresh
 // the list without repeating how it is derived.
 function renderOccasionList() {
-  const list = upcoming(occasions);
+  const list = upcoming(occasions, hubDay());
   const shown = searchQ ? list.filter((o) => searchMatch(searchQ, searchableFields(o))) : list;
   if (shown.length) return `<div class="stack">${shown.map(renderOccasion).join("")}</div>`;
   if (searchQ) return `<div class="card empty">No occasions match "${esc(searchQ)}".</div>`;
@@ -458,7 +467,7 @@ document.addEventListener("input", (e) => {
 function render() {
   const root = document.getElementById("root");
   root.className = "app-root";
-  const list = upcoming(occasions);
+  const list = upcoming(occasions, hubDay());
   root.innerHTML = `
     <div class="topbar">
       <div>
@@ -639,7 +648,7 @@ function submitEditor(existingId, carry = {}) {
   const milestone = kind === MILESTONE_KIND;
   // A one-off date in the past would count down to nothing. Only block on
   // create — an existing milestone is allowed to age into the Passed section.
-  if (milestone && !existingId && dateStr < localDateKey()) {
+  if (milestone && !existingId && dateStr < hubToday()) {
     showError("A countdown needs a date in the future.");
     document.getElementById("f-date").focus();
     return;
