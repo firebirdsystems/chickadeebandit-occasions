@@ -4,6 +4,7 @@ import {
   yearsAtNext, countdownLabel, upcoming, contactSuggestions, kindMeta,
   isMilestone, occasionTarget, daysUntilOccasion, passedMilestones, countdownRows,
   localDateKey, MILESTONE_KIND, searchableFields,
+  buildCalendarEvents, CALENDAR_EXPORT_HORIZON_DAYS, CALENDAR_EXPORT_MAX_EVENTS,
 } from "../src/logic.js";
 
 const at = (y, m, d) => new Date(y, m - 1, d, 9, 0, 0); // a "now" fixed at 9am local
@@ -233,5 +234,137 @@ describe("searchableFields", () => {
     });
     expect(fields).toContain("climbing shoes");
     expect(fields).toContain("turning 12");
+  });
+});
+
+describe("buildCalendarEvents", () => {
+  const row = (over = {}) => ({
+    id: "o1", member_id: "m1", kind: "birthday", title: "Mom",
+    event_month: 6, event_day: 21, event_year: 1959, visibility: "everyone",
+    notes: "", gift_idea: "", ...over,
+  });
+
+  it("projects a recurring occasion onto this year when it is still ahead", () => {
+    const out = buildCalendarEvents([row()], "2026-06-01");
+    expect(out).toHaveLength(1);
+    expect(out[0]).toMatchObject({
+      id: "o1", title: "Mom", description: "Birthday", location: "",
+      start: "2026-06-21", end: "2026-06-21", all_day: true,
+      member_ids: ["m1"], source_label: "Occasions",
+    });
+  });
+
+  it("includes the occasion falling today", () => {
+    expect(buildCalendarEvents([row()], "2026-06-21")[0].start).toBe("2026-06-21");
+  });
+
+  it("rolls a recurring occasion into next year once this year's has passed", () => {
+    expect(buildCalendarEvents([row()], "2026-06-22")[0].start).toBe("2027-06-21");
+  });
+
+  // event_year on a recurring kind is the ORIGIN year — the age, the "Nth" —
+  // and never the occurrence year. Using it as the date would export Mom's
+  // birthday in 1959.
+  it("ignores event_year when projecting a recurring occasion", () => {
+    const out = buildCalendarEvents([row({ event_year: 1959 })], "2026-06-01");
+    expect(out[0].start.slice(0, 4)).toBe("2026");
+  });
+
+  // A leap-day occasion still has to land on a real date in a non-leap year.
+  // 28 February is the day the household marks it; 1 March would move it into
+  // the wrong month.
+  it("lands a 29 February occasion on 28 February in a non-leap year", () => {
+    const out = buildCalendarEvents([row({ event_month: 2, event_day: 29 })], "2026-01-01");
+    expect(out[0].start).toBe("2026-02-28");
+  });
+
+  it("keeps 29 February in a leap year", () => {
+    const out = buildCalendarEvents([row({ event_month: 2, event_day: 29 })], "2028-01-01");
+    expect(out[0].start).toBe("2028-02-29");
+  });
+
+  it("exports a milestone on its stored date", () => {
+    const m = row({ id: "m", kind: MILESTONE_KIND, title: "Disney trip", event_year: 2026, event_month: 9, event_day: 30 });
+    const out = buildCalendarEvents([m], "2026-06-01");
+    expect(out[0]).toMatchObject({ start: "2026-09-30", end: "2026-09-30", description: "One-time event" });
+  });
+
+  // A milestone is one-off. Rolling a passed one forward would invent a second
+  // Disney trip a year after the real one.
+  it("drops a passed milestone instead of rolling it into next year", () => {
+    const m = row({ kind: MILESTONE_KIND, event_year: 2026, event_month: 5, event_day: 1 });
+    expect(buildCalendarEvents([m], "2026-06-01")).toEqual([]);
+  });
+
+  it("drops a milestone with no year, and a row with no usable month/day", () => {
+    const noYear = row({ id: "a", kind: MILESTONE_KIND, event_year: null });
+    const noDate = row({ id: "b", event_month: null, event_day: null });
+    expect(buildCalendarEvents([noYear, noDate], "2026-06-01")).toEqual([]);
+  });
+
+  it("excludes rows beyond the horizon", () => {
+    // A milestone is the only kind that can sit past the horizon: an annual
+    // occasion always projects within a year of today.
+    const far = row({ kind: MILESTONE_KIND, event_year: 2028, event_month: 1, event_day: 1 });
+    expect(CALENDAR_EXPORT_HORIZON_DAYS).toBe(400);
+    expect(buildCalendarEvents([far], "2026-06-01")).toEqual([]);
+  });
+
+  // THE filter. The store blob is scope-wide and the owner_or_visibility row
+  // policy does not touch it, so this is the only thing keeping a private
+  // occasion — usually the surprise the app exists to hold — off every member's
+  // calendar and out of the household ICS feed.
+  it("never exports a row whose visibility is not 'everyone'", () => {
+    const rows = [
+      row({ id: "pub", visibility: "everyone" }),
+      row({ id: "priv", title: "Secret proposal", visibility: "private" }),
+      row({ id: "blank", title: "Unset", visibility: "" }),
+      row({ id: "missing", title: "Absent", visibility: undefined }),
+    ];
+    const out = buildCalendarEvents(rows, "2026-06-01");
+    expect(out.map((e) => e.id)).toEqual(["pub"]);
+    expect(JSON.stringify(out)).not.toContain("Secret proposal");
+  });
+
+  // A gift idea reaching the recipient's own shared calendar defeats the whole
+  // point of writing it down; notes are free text a member wrote for the
+  // household, and the ICS feed leaves the household.
+  it("never exports notes or gift_idea", () => {
+    const out = buildCalendarEvents([row({ notes: "turning 67", gift_idea: "climbing shoes" })], "2026-06-01");
+    const json = JSON.stringify(out);
+    expect(json).not.toContain("climbing shoes");
+    expect(json).not.toContain("turning 67");
+    expect(out[0]).not.toHaveProperty("notes");
+    expect(out[0]).not.toHaveProperty("gift_idea");
+  });
+
+  it("emits an empty member_ids when the row has no member", () => {
+    expect(buildCalendarEvents([row({ member_id: "" })], "2026-06-01")[0].member_ids).toEqual([]);
+  });
+
+  it("sorts ascending and caps at CALENDAR_EXPORT_MAX_EVENTS, keeping the nearest", () => {
+    // 120 milestones one day apart from tomorrow, handed over in reverse order.
+    const rows = [];
+    for (let i = 120; i >= 1; i--) {
+      const d = new Date(2026, 0, 1 + i, 12);
+      rows.push(row({
+        id: `x${i}`, kind: MILESTONE_KIND,
+        event_year: d.getFullYear(), event_month: d.getMonth() + 1, event_day: d.getDate(),
+      }));
+    }
+    const out = buildCalendarEvents(rows, "2026-01-01");
+    expect(out).toHaveLength(CALENDAR_EXPORT_MAX_EVENTS);
+    expect(out[0].start).toBe("2026-01-02");
+    expect(out.map((e) => e.start)).toEqual([...out.map((e) => e.start)].sort());
+    expect(out.at(-1).start).toBe("2026-04-11");
+  });
+
+  // The projection decides whether THIS year's occurrence has passed, so it has
+  // to follow the household's calendar day, not the machine's.
+  it("derives the projection from todayIso, not the device clock", () => {
+    const before = buildCalendarEvents([row()], "2026-06-20")[0].start;
+    const after = buildCalendarEvents([row()], "2026-06-22")[0].start;
+    expect(before).toBe("2026-06-21");
+    expect(after).toBe("2027-06-21");
   });
 });

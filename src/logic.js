@@ -280,3 +280,84 @@ export function contactSuggestions(contactDates, existing) {
 export function searchableFields(item) {
   return [item.title, item.notes, item.gift_idea, item.kind];
 }
+
+/* ── Calendar export ───────────────────────────────────────────────────────── */
+
+/** 400, not 365. A birthday exactly a year out must still land, and the horizon
+ *  is measured from today — at 365 the occasion that fell yesterday, whose next
+ *  occurrence is 364 days off, would sit right on the edge and a rounding wobble
+ *  could drop it. The extra five weeks costs nothing (the cap below binds long
+ *  before the horizon does) and guarantees every annual date appears exactly
+ *  once: twice is impossible because each row projects to a single occurrence. */
+export const CALENDAR_EXPORT_HORIZON_DAYS = 400;
+export const CALENDAR_EXPORT_MAX_EVENTS = 100;
+
+/**
+ * Build the `calendar_events` payload from the occasions list.
+ *
+ * Shape matches what the hub's cross-app aggregation consumes — see
+ * `normalizeExportedEvent` in packages/hub/src/cloudflare/calendar-feed.ts.
+ *
+ * SECURITY — read before touching the filter. The `calendar_events` store blob
+ * is SCOPE-WIDE: one value per install, read by every member of the household
+ * and, in a shared space, by every household in it. The `owner_or_visibility`
+ * row policy that keeps a private occasion off other members' screens does NOT
+ * apply to it — nothing filters this blob but the line below. So only
+ * `visibility === "everyone"` rows go in. A private occasion is typically the
+ * surprise the calendar exists to keep secret; exporting one would publish it
+ * to the whole household AND to the ICS feed that Google/Apple subscribe to.
+ *
+ * `notes` and `gift_idea` are deliberately NOT exported. Both are free text a
+ * member wrote, and `gift_idea` in particular reaches the recipient's own
+ * calendar through that feed, which defeats the entire point of recording it.
+ * The title and the projected date are all a calendar entry needs.
+ *
+ * This is a different lane from `date_reminders` in the manifest. That protocol
+ * emails a member ahead of the date; this one puts the occasion ON the calendar
+ * and in the ICS feed, which reminders never do. Neither replaces the other.
+ *
+ * Every entry is all-day: the table stores a month and a day, never a time.
+ */
+export function buildCalendarEvents(occasions, todayIso, from = new Date(`${todayIso}T12:00:00`)) {
+  // `from` defaults out of `todayIso` rather than the device clock: the
+  // projection below decides whether THIS year's occurrence has passed, and the
+  // household's calendar day is the only one entitled to answer that.
+  const horizon = localDateKey(new Date(atMidnight(from).getTime() + CALENDAR_EXPORT_HORIZON_DAYS * 86400000));
+  return (occasions ?? [])
+    .filter((o) => o?.visibility === "everyone")
+    .map((o) => {
+      // occasionTarget() is the single projection rule, shared with the in-app
+      // countdown so the calendar and the list can never disagree:
+      //   - a milestone is one-off, so its target is its STORED year/month/day
+      //     and is never rolled forward — a past one falls out on the date
+      //     filter below instead of reappearing next year;
+      //   - every other kind recurs annually, so the target is this year's
+      //     month/day if that is still ahead, otherwise next year's. Its
+      //     event_year is the ORIGIN year (the age / "Nth"), never the
+      //     occurrence year, so it takes no part in the projection.
+      // makeDate() clamps the day to the month's length, so a 29 February
+      // occasion projected into a non-leap year lands on 28 February. That is
+      // the convention the countdown already uses, and 28 February is the day
+      // the household actually marks it; 1 March would move it into the wrong
+      // month.
+      const target = occasionTarget(o, from);
+      if (!target) return null;
+      // `target` was built from local year/month/day parts, so reading it back
+      // with the local formatter is exact — no timezone hop happens in between.
+      const start = localDateKey(target);
+      return {
+        id: o.id,
+        title: o.title,
+        description: kindMeta(o.kind).label,
+        location: "",
+        start,
+        end: start,
+        all_day: true,
+        member_ids: o.member_id ? [o.member_id] : [],
+        source_label: "Occasions",
+      };
+    })
+    .filter((e) => e && e.start >= todayIso && e.start <= horizon)
+    .sort((a, b) => String(a.start).localeCompare(String(b.start)))
+    .slice(0, CALENDAR_EXPORT_MAX_EVENTS);
+}

@@ -114,6 +114,9 @@
       }
     }
   ],
+  "exports": [
+    "calendar_events"
+  ],
   "publishes": [
     "occasion.created"
   ],

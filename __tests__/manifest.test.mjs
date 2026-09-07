@@ -73,6 +73,36 @@ describe("manifest.json", () => {
     });
   });
 
+  // The hub filters cross-app calendar sources on `manifest.exports`, so
+  // dropping this key does not error anywhere — it silently empties the app's
+  // contribution to the household calendar and the ICS feed.
+  it("declares the calendar_events export", () => {
+    expect(manifest.exports).toContain("calendar_events");
+  });
+
+  // Deliberately NO store_acl on calendar_events. Do not "harden" this by
+  // adding one — it would break the feature for exactly the members it exists
+  // to serve.
+  //
+  // Occasions is member-writable by design: the row policy is
+  // `owner_or_visibility` with `write_visibility_scoped`, so every member owns
+  // and edits their own occasions. The store key is written by syncCalendar()
+  // on the same paths. The hub only accepts `require_role: "adult"` here —
+  // `validateStoreAccessRule` rejects every other value — so there is no
+  // weaker role to declare, and an adult gate would mean a member's own
+  // birthday never reaches the calendar until an adult happens to mutate
+  // something. Worse, the POST is best-effort, so that failure is invisible.
+  //
+  // The tradeoff, stated plainly: with no ACL a member can POST arbitrary JSON
+  // straight to the key. But the blob is rebuilt from the database on the next
+  // mutation, and that same member can already create a real occasion with any
+  // title that everyone sees. The marginal exposure is small next to the
+  // feature the gate would break. Absence is the correct expression of "any
+  // member may write this key".
+  it("leaves the calendar_events store key member-writable", () => {
+    expect(manifest.store_acls?.calendar_events).toBeUndefined();
+  });
+
   it("only ever writes the two visibility values only_when relies on", () => {
     const html = readFileSync(join(__dirname, "../src/index.html"), "utf-8");
     expect(html).toMatch(/visibility:\s*isPrivate\s*\?\s*"private"\s*:\s*"everyone"/);

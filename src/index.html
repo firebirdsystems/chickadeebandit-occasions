@@ -139,7 +139,7 @@
 </div>
 
 <script type="module">
-import { esc, isAdult, hubConfirm, searchMatch, hubToday } from "/hub-sdk.js";
+import { esc, hubConfirm, searchMatch, hubToday } from "/hub-sdk.js";
 
 // The household's calendar day as a Date, for the pure helpers in logic.js that
 // need one. Occasion countdowns compare a STORED event date against "today", and
@@ -151,11 +151,12 @@ const hubDay = () => new Date(`${hubToday()}T12:00:00`);
 
 import {
   KINDS, kindMeta, upcoming, passedMilestones, countdownLabel, contactSuggestions,
-  daysInMonth, MILESTONE_KIND, searchableFields,
+  daysInMonth, MILESTONE_KIND, searchableFields, buildCalendarEvents,
 } from "./logic.js";
 
 const CONTEXT = window.__CONTEXT_URL ?? "";
 const DB = window.__DB_URL ?? "";
+const STORE_URL = window.__STORE_URL ?? "";
 const HUB_MEMBER = window.__CURRENT_MEMBER ?? null;
 const EVENTS = window.__EVENTS_URL ?? "";
 
@@ -280,6 +281,38 @@ function clearMessages() { error = ""; notice = ""; }
 function showError(msg) { error = msg; notice = ""; render(); }
 function showNotice(msg) { notice = msg; error = ""; render(); }
 
+/**
+ * Republish the `calendar_events` export so shared occasions show up on the
+ * household calendar and in the ICS feed. Best-effort and unable to reject: a
+ * failed sync must never roll back an occasion the member just saved, and the
+ * next mutation republishes the whole payload anyway.
+ *
+ * This runs after every mutation, a visibility change included — flipping a row
+ * to "private" is exactly the edit that must REMOVE its calendar entry, and the
+ * payload is rebuilt whole each time, so the removal happens for free.
+ *
+ * There is deliberately NO `store_acls` entry for this key. Occasions is
+ * member-writable by design — the row policy is `owner_or_visibility` with
+ * `write_visibility_scoped`, so every member owns and edits their own rows, and
+ * every one of those paths lands here. The hub only accepts
+ * `require_role: "adult"` in a store ACL, so the only gate available would mean
+ * a member's own birthday never reaches the calendar until an adult happened to
+ * mutate something — and because this POST is best-effort, that failure would
+ * be completely silent. The tradeoff: unguarded, a member can POST arbitrary
+ * JSON to the key, but the blob is rebuilt from the database on the very next
+ * mutation, and that member can already create a real occasion with any title
+ * that everyone sees. Small exposure, next to a broken feature.
+ */
+async function syncCalendar() {
+  if (!STORE_URL || !DB) return;
+  const events = buildCalendarEvents(occasions, hubToday());
+  await fetch(STORE_URL, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ key: "calendar_events", value: JSON.stringify(events) }),
+  }).catch(() => {});
+}
+
 /* ── Mutations ─────────────────────────────────────────────────────────────── */
 async function saveOccasion(fields, existingId) {
   const now = nowIso();
@@ -296,6 +329,7 @@ async function saveOccasion(fields, existingId) {
          WHERE id=?`,
         [fields.kind, fields.title, fields.event_month, fields.event_day, fields.event_year, fields.visibility, fields.notes, fields.gift_idea, fields.lead_days, fields.remind, fields.emoji, fields.countdown, now, existingId],
       );
+      await syncCalendar();
     } catch (e) {
       if (idx !== -1 && prev) occasions[idx] = prev;
       showError(e.message);
@@ -319,6 +353,7 @@ async function saveOccasion(fields, existingId) {
          VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`,
         [row.id, row.member_id, row.kind, row.title, row.event_month, row.event_day, row.event_year, row.visibility, row.notes, row.gift_idea, row.lead_days, row.remind, row.source, row.source_ref, row.emoji, row.countdown, now, now],
       );
+      await syncCalendar();
       // Only shared occasions reach the bus: a private row is the owner's alone
       // (a surprise-gift reminder), and every member with this app can read the
       // event feed.
@@ -347,6 +382,7 @@ async function deleteOccasion(id) {
   render();
   try {
     await db("DELETE FROM app_occasions__occasions WHERE id=?", [id]);
+    await syncCalendar();
     showNotice("Occasion deleted.");
   } catch (e) {
     occasions = prev;
