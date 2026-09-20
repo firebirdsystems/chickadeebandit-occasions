@@ -1,5 +1,7 @@
 # Occasions
 
+A [Chickadee Bandit](https://chickadeebandit.com/app-library/occasions) app.
+
 One shared household list of the dates you don't want to miss — birthdays,
 anniversaries, memorials, holidays, and gift reminders — sorted by what's coming
 up next, with countdowns. Pull birthdays and anniversaries in from the Contacts
