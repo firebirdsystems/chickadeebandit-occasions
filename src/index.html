@@ -512,7 +512,7 @@ function render() {
         ${reminderStatus
           ? (reminderStatus.entitled
             ? `<p class="muted tiny">📬 Email reminders are on — everyone gets a nudge before each shared date.</p>`
-            : `<p class="muted tiny">📬 Email reminders are part of the ${esc(reminderStatus.bundle ?? "premium")} bundle — countdowns below work either way.</p>`)
+            : `<p class="muted tiny">📬 Email reminders are paused while the household's plan is inactive — countdowns below work either way.</p>`)
           : ""}
       </div>
       <button class="btn" data-add>+ Add</button>
@@ -601,7 +601,7 @@ function openEditor(existing) {
         <label for="f-lead">Email reminder</label>
         <select id="f-lead">${leadOptions(o?.lead_days ?? 3, o ? Number(o.remind) === 0 : false)}</select>
         ${reminderStatus && !reminderStatus.entitled
-          ? `<span class="tiny muted">Saved now, emailed once your household unlocks the ${esc(reminderStatus.bundle ?? "premium")} bundle.</span>`
+          ? `<span class="tiny muted">Saved now, emailed once your household's plan is active again.</span>`
           : ""}
       </div>
       <div class="field">

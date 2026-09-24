@@ -35,17 +35,16 @@ npm run build   # produces dist/bundle.json
   (declared in `data_access.reads`) to suggest birthdays/anniversaries you can add
   in one tap. If Contacts isn't installed the suggestions section is simply empty.
 
-## Reminders (premium)
+## Reminders (email)
 
-Free: the in-app upcoming list and countdowns. Premium (`cron` + `email`
-capabilities): the hub's `date_reminders` protocol emails a nudge ("Grandma's
-birthday is in 3 days") ahead of each occasion, delivered in the household's
-local morning.
+The in-app upcoming list and countdowns always work. On a live plan (`cron` +
+`email` capabilities, included with every plan) the hub's `date_reminders`
+protocol emails a nudge ("Grandma's birthday is in 3 days") ahead of each
+occasion, delivered in the household's local morning.
 
 - Each occasion's **Email reminder** picker sets `lead_days` (day-of up to two
-  weeks before). The value is always saved; emails only go out once the
-  household holds the premium bundle — the app shows an upgrade note otherwise
-  (via `GET api/reminders-status`).
+  weeks before). The value is always saved; emails pause while the household's
+  plan is inactive — the app shows a note then (via `GET api/reminders-status`).
 - Recipients are **visibility-aware, enforced hub-side**: `everyone` occasions
   email the whole household; `private` occasions (surprise gifts) email only
   their owner.

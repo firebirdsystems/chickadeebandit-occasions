@@ -22,7 +22,7 @@
 -- gift_idea are encrypted at rest and only ever displayed, never sorted in SQL.
 --
 -- lead_days is the reminder lead time (how many days before the date a future
--- premium email nudge would fire). It has no effect today — the reminder cron
+-- email nudge would fire). It has no effect today — the reminder cron
 -- is a follow-up — but is stored per-row so that wiring is drop-in later.
 CREATE TABLE IF NOT EXISTS app_occasions__occasions (
   id          TEXT    PRIMARY KEY,
