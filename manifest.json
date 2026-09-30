@@ -31,6 +31,9 @@
     "requires_approval": false
   },
   "storage": "db",
+  "preload": {
+    "occasions": { "sql": "SELECT id, member_id, kind, title, event_month, event_day, event_year, visibility, notes, gift_idea, lead_days, remind, source, source_ref, emoji, countdown, created_at, updated_at FROM app_occasions__occasions" }
+  },
   "automation_actions": {
     "add_occasion": {
       "title": "Record a date to remember",
@@ -143,7 +146,8 @@
       "everyone_values": [
         "everyone"
       ],
-      "write_visibility_scoped": true
+      "write_visibility_scoped": true,
+      "delete_adult_only": true
     }
   },
   "delete_file_columns": {

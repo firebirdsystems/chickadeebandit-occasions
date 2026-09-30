@@ -624,7 +624,7 @@ function openEditor(existing) {
         Shared screens only show occasions everyone can see, so a private occasion counts down inside this app only.
       </span>
       <div class="modal-actions">
-        ${o ? `<button type="button" class="btn btn-danger modal-left" data-delete="${esc(o.id)}">Delete</button>` : ""}
+        ${o && me?.role === "adult" ? `<button type="button" class="btn btn-danger modal-left" data-delete="${esc(o.id)}">Delete</button>` : ""}
         <button type="button" class="btn btn-ghost" data-cancel>Cancel</button>
         <button type="submit" class="btn">${o ? "Save" : "Add"}</button>
       </div>

@@ -90,6 +90,122 @@
           "expect": { "status": 200, "rowsContain": [{ "gift_idea": "a watch" }] }
         }
       ]
+    },
+    {
+      "name": "a child's occasion is stamped as the child even when it names a parent, and the child can neither read nor change a parent's private occasion",
+      "members": { "kid": "child", "parent": "adult" },
+      "steps": [
+        {
+          "action": "db",
+          "as": "parent",
+          "sql": "INSERT INTO app_occasions__occasions (id, member_id, kind, title, event_month, event_day, event_year, visibility, notes, gift_idea, lead_days, source, source_ref, created_at, updated_at) VALUES (?, ?, 'gift', ?, 3, 3, NULL, ?, '', ?, 3, 'manual', '', '2026-01-01T00:00:00Z', '2026-01-01T00:00:00Z')",
+          "params": ["occ-parent-private", "{{parent}}", "Kid birthday surprise", "private", "a bike"],
+          "expect": { "status": 200 }
+        },
+        {
+          "action": "db",
+          "as": "kid",
+          "sql": "INSERT INTO app_occasions__occasions (id, member_id, kind, title, event_month, event_day, event_year, visibility, notes, gift_idea, lead_days, source, source_ref, created_at, updated_at) VALUES (?, ?, 'gift', ?, 3, 3, NULL, ?, '', ?, 3, 'manual', '', '2026-01-01T00:00:00Z', '2026-01-01T00:00:00Z')",
+          "params": ["occ-kid", "{{parent}}", "Card for mom", "private", "flowers"],
+          "expect": { "status": 200 }
+        },
+        {
+          "action": "db",
+          "as": "kid",
+          "sql": "SELECT id, member_id FROM app_occasions__occasions",
+          "expect": { "status": 200, "rowCount": 1, "rowsContain": [{ "id": "occ-kid", "member_id": "scn-kid" }] }
+        },
+        {
+          "action": "db",
+          "as": "parent",
+          "sql": "SELECT id FROM app_occasions__occasions WHERE id = ?",
+          "params": ["occ-kid"],
+          "expect": { "status": 200, "rowCount": 0 }
+        },
+        {
+          "action": "db",
+          "as": "kid",
+          "sql": "UPDATE app_occasions__occasions SET gift_idea = 'spoiled' WHERE id = ?",
+          "params": ["occ-parent-private"],
+          "expect": { "status": 200 }
+        },
+        {
+          "action": "db",
+          "as": "kid",
+          "sql": "DELETE FROM app_occasions__occasions WHERE id = ?",
+          "params": ["occ-parent-private"],
+          "expect": { "status": 403, "errorIncludes": "requires an adult member" }
+        },
+        {
+          "action": "db",
+          "as": "parent",
+          "sql": "SELECT id, gift_idea FROM app_occasions__occasions WHERE id = ?",
+          "params": ["occ-parent-private"],
+          "expect": {
+            "status": 200,
+            "rowCount": 1,
+            "rowsContain": [{ "id": "occ-parent-private", "gift_idea": "a bike" }]
+          }
+        }
+      ]
+    },
+    {
+      "name": "a child can edit a shared occasion but only an adult can delete one",
+      "members": { "parent": "adult", "kid": "child" },
+      "steps": [
+        {
+          "action": "db",
+          "as": "parent",
+          "sql": "INSERT INTO app_occasions__occasions (id, member_id, kind, title, event_month, event_day, visibility, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)",
+          "params": [
+            "occ-grandma",
+            "{{parent}}",
+            "birthday",
+            "Grandma",
+            3,
+            14,
+            "everyone",
+            "2026-01-01T00:00:00Z",
+            "2026-01-01T00:00:00Z"
+          ],
+          "expect": { "status": 200 }
+        },
+        {
+          "action": "db",
+          "as": "kid",
+          "sql": "UPDATE app_occasions__occasions SET gift_idea = 'scarf' WHERE id = ?",
+          "params": ["occ-grandma"],
+          "expect": { "status": 200 }
+        },
+        {
+          "action": "db",
+          "as": "kid",
+          "sql": "DELETE FROM app_occasions__occasions WHERE id = ?",
+          "params": ["occ-grandma"],
+          "expect": { "status": 403 }
+        },
+        {
+          "action": "db",
+          "as": "parent",
+          "sql": "SELECT gift_idea FROM app_occasions__occasions WHERE id = ?",
+          "params": ["occ-grandma"],
+          "expect": { "status": 200, "rowCount": 1, "rowsContain": [{ "gift_idea": "scarf" }] }
+        },
+        {
+          "action": "db",
+          "as": "parent",
+          "sql": "DELETE FROM app_occasions__occasions WHERE id = ?",
+          "params": ["occ-grandma"],
+          "expect": { "status": 200 }
+        },
+        {
+          "action": "db",
+          "as": "parent",
+          "sql": "SELECT id FROM app_occasions__occasions WHERE id = ?",
+          "params": ["occ-grandma"],
+          "expect": { "status": 200, "rowCount": 0 }
+        }
+      ]
     }
   ]
 }
