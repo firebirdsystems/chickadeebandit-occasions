@@ -139,7 +139,7 @@
 </div>
 
 <script type="module">
-import { esc, hubConfirm, searchMatch, hubToday } from "/hub-sdk.js";
+import { esc, hubConfirm, searchMatch, hubToday, glyph } from "/hub-sdk.js";
 
 // The household's calendar day as a Date, for the pure helpers in logic.js that
 // need one. Occasion countdowns compare a STORED event date against "today", and
@@ -423,19 +423,19 @@ function renderOccasion(o) {
   const yl = yearsLabel(o.kind, o._years);
   return `
     <div class="occ">
-      <div class="occ-emoji" aria-hidden="true">${esc(o.emoji || meta.icon)}</div>
+      <div class="occ-emoji" aria-hidden="true">${o.emoji ? esc(o.emoji) : glyph(meta.glyph)}</div>
       <div class="occ-body">
         <div class="occ-title">
           ${esc(o.title || meta.label)}
-          ${o.visibility === "private" ? `<span class="lock" title="Only you can see this">🔒</span>` : ""}
-          ${Number(o.countdown) === 1 ? `<span class="lock" title="Counting down on the dashboard, kiosk and widgets">📺</span>` : ""}
+          ${o.visibility === "private" ? `<span class="lock" title="Only you can see this" aria-label="Only you can see this">${glyph("lock")}</span>` : ""}
+          ${Number(o.countdown) === 1 ? `<span class="lock" title="Counting down on the dashboard, kiosk and widgets" aria-label="Counting down on the dashboard, kiosk and widgets">${glyph("hourglass")}</span>` : ""}
         </div>
         <div class="occ-meta">
           ${esc(fmtDate(Number(o.event_month), Number(o.event_day), o.event_year ? Number(o.event_year) : null))}
           ${yl ? ` · ${esc(yl)}` : ""}
           · ${esc(meta.label)}
         </div>
-        ${o.gift_idea ? `<div class="occ-note">🎁 ${esc(o.gift_idea)}</div>` : ""}
+        ${o.gift_idea ? `<div class="occ-note">${glyph("gift")} ${esc(o.gift_idea)}</div>` : ""}
         ${o.notes ? `<div class="occ-note">${esc(o.notes)}</div>` : ""}
       </div>
       <div class="occ-side">
@@ -456,7 +456,7 @@ function renderSuggestions() {
         const meta = kindMeta(s.kind);
         return `
           <div class="suggest">
-            <div class="occ-emoji" aria-hidden="true">${meta.icon}</div>
+            <div class="occ-emoji" aria-hidden="true">${glyph(meta.glyph)}</div>
             <div class="occ-body">
               <strong>${esc(s.name)}</strong> · ${esc(meta.label)}
               <div class="tiny muted">${esc(fmtDate(s.month, s.day, s.year))}</div>
@@ -511,8 +511,8 @@ function render() {
         <p class="muted tiny">The dates your household doesn't want to miss.</p>
         ${reminderStatus
           ? (reminderStatus.entitled
-            ? `<p class="muted tiny">📬 Email reminders are on — everyone gets a nudge before each shared date.</p>`
-            : `<p class="muted tiny">📬 Email reminders are paused while the household's plan is inactive — countdowns below work either way.</p>`)
+            ? `<p class="muted tiny">${glyph("envelope-heart")} Email reminders are on — everyone gets a nudge before each shared date.</p>`
+            : `<p class="muted tiny">${glyph("envelope-heart")} Email reminders are paused while the household's plan is inactive — countdowns below work either way.</p>`)
           : ""}
       </div>
       <button class="btn" data-add>+ Add</button>
@@ -581,7 +581,7 @@ function openEditor(existing) {
         <div class="field">
           <label for="f-kind">Type</label>
           <select id="f-kind">${kindOptions}</select>
-          <span class="tiny muted">Every type repeats each year — except ⏳ One-time event, which happens once.</span>
+          <span class="tiny muted">Every type repeats each year — except ${glyph("hourglass")} One-time event, which happens once.</span>
         </div>
         <div class="field">
           <label for="f-date">Date</label>

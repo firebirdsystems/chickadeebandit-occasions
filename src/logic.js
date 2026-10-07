@@ -8,13 +8,13 @@
  */
 
 export const KINDS = [
-  { value: "birthday",    label: "Birthday",    icon: "🎂" },
-  { value: "anniversary", label: "Anniversary", icon: "💍" },
-  { value: "memorial",    label: "Memorial",    icon: "🕊️" },
-  { value: "holiday",     label: "Holiday",     icon: "🎉" },
-  { value: "gift",        label: "Gift",        icon: "🎁" },
-  { value: "milestone",   label: "One-time event", icon: "⏳" },
-  { value: "other",       label: "Other",       icon: "📌" },
+  { value: "birthday",    label: "Birthday",    icon: "🎂", glyph: "cake" },
+  { value: "anniversary", label: "Anniversary", icon: "💍", glyph: "two-hearts" },
+  { value: "memorial",    label: "Memorial",    icon: "🕊️", glyph: "candle" },
+  { value: "holiday",     label: "Holiday",     icon: "🎉", glyph: "party" },
+  { value: "gift",        label: "Gift",        icon: "🎁", glyph: "gift" },
+  { value: "milestone",   label: "One-time event", icon: "⏳", glyph: "hourglass" },
+  { value: "other",       label: "Other",       icon: "📌", glyph: "pinboard" },
 ];
 
 /** The one-off kind: a single dated event ("Disney trip"), not an annual
@@ -31,7 +31,7 @@ export function isMilestone(occasion) {
 const KIND_BY_VALUE = new Map(KINDS.map((k) => [k.value, k]));
 
 export function kindMeta(kind) {
-  return KIND_BY_VALUE.get(kind) ?? { value: "other", label: "Other", icon: "📌" };
+  return KIND_BY_VALUE.get(kind) ?? { value: "other", label: "Other", icon: "📌", glyph: "pinboard" };
 }
 
 /** Days in a given month (1-12) of a given year, honoring leap years. */
