@@ -326,29 +326,30 @@ async function syncCalendar() {
 }
 
 /* ── Mutations ─────────────────────────────────────────────────────────────── */
+// The write goes first: the editor stays open until the hub has the occasion,
+// and a refused write throws to the caller — the editor says so in the form and
+// leaves what was typed in place. Nothing is drawn for a row the hub never got.
 async function saveOccasion(fields, existingId) {
   const now = nowIso();
   if (existingId) {
+    const res = await db(
+      `UPDATE app_occasions__occasions
+       SET kind=?, title=?, event_month=?, event_day=?, event_year=?, visibility=?, notes=?, gift_idea=?, lead_days=?, remind=?, emoji=?, countdown=?, updated_at=?
+       WHERE id=?`,
+      [fields.kind, fields.title, fields.event_month, fields.event_day, fields.event_year, fields.visibility, fields.notes, fields.gift_idea, fields.lead_days, fields.remind, fields.emoji, fields.countdown, now, existingId],
+    );
+    // The hub answers 200 with nothing changed when the row is not this
+    // member's to edit, or is gone. Trying again cannot help: close and say why.
+    if (res.changed === 0) {
+      closeModal();
+      showError("This occasion can no longer be changed.");
+      return;
+    }
     const idx = occasions.findIndex((o) => o.id === existingId);
-    const prev = idx !== -1 ? occasions[idx] : null;
     if (idx !== -1) occasions[idx] = { ...occasions[idx], ...fields, updated_at: now };
     closeModal();
     render();
-    try {
-      const res = await db(
-        `UPDATE app_occasions__occasions
-         SET kind=?, title=?, event_month=?, event_day=?, event_year=?, visibility=?, notes=?, gift_idea=?, lead_days=?, remind=?, emoji=?, countdown=?, updated_at=?
-         WHERE id=?`,
-        [fields.kind, fields.title, fields.event_month, fields.event_day, fields.event_year, fields.visibility, fields.notes, fields.gift_idea, fields.lead_days, fields.remind, fields.emoji, fields.countdown, now, existingId],
-      );
-      // The hub answers 200 with nothing changed when the row is not this
-      // member's to edit, or is gone.
-      if (res.changed === 0) throw new Error("This occasion can no longer be changed.");
-      await syncCalendar();
-    } catch (e) {
-      if (idx !== -1 && prev) occasions[idx] = prev;
-      showError(e.message);
-    }
+    await syncCalendar();
   } else {
     const row = {
       id: crypto.randomUUID(),
@@ -358,32 +359,27 @@ async function saveOccasion(fields, existingId) {
       source_ref: fields.source_ref ?? "",
       created_at: now, updated_at: now,
     };
+    await db(
+      `INSERT INTO app_occasions__occasions
+        (id, member_id, kind, title, event_month, event_day, event_year, visibility, notes, gift_idea, lead_days, remind, source, source_ref, emoji, countdown, created_at, updated_at)
+       VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`,
+      [row.id, row.member_id, row.kind, row.title, row.event_month, row.event_day, row.event_year, row.visibility, row.notes, row.gift_idea, row.lead_days, row.remind, row.source, row.source_ref, row.emoji, row.countdown, now, now],
+    );
     occasions = [...occasions, row];
     closeModal();
     render();
-    try {
-      await db(
-        `INSERT INTO app_occasions__occasions
-          (id, member_id, kind, title, event_month, event_day, event_year, visibility, notes, gift_idea, lead_days, remind, source, source_ref, emoji, countdown, created_at, updated_at)
-         VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`,
-        [row.id, row.member_id, row.kind, row.title, row.event_month, row.event_day, row.event_year, row.visibility, row.notes, row.gift_idea, row.lead_days, row.remind, row.source, row.source_ref, row.emoji, row.countdown, now, now],
-      );
-      await syncCalendar();
-      // Only shared occasions reach the bus: a private row is the owner's alone
-      // (a surprise-gift reminder), and every member with this app can read the
-      // event feed.
-      if (row.visibility === "everyone") {
-        await publishEvent("occasion.created", row.id, {
-          title: row.title,
-          kind: row.kind,
-          event_month: row.event_month,
-          event_day: row.event_day,
-          member_id: row.member_id,
-        });
-      }
-    } catch (e) {
-      occasions = occasions.filter((o) => o.id !== row.id);
-      showError(e.message);
+    await syncCalendar();
+    // Only shared occasions reach the bus: a private row is the owner's alone
+    // (a surprise-gift reminder), and every member with this app can read the
+    // event feed.
+    if (row.visibility === "everyone") {
+      await publishEvent("occasion.created", row.id, {
+        title: row.title,
+        kind: row.kind,
+        event_month: row.event_month,
+        event_day: row.event_day,
+        member_id: row.member_id,
+      });
     }
   }
 }
@@ -395,14 +391,16 @@ async function deleteOccasion(id) {
   occasions = occasions.filter((o) => o.id !== id);
   closeModal();
   render();
+  let refused = null;
   try {
     const res = await db("DELETE FROM app_occasions__occasions WHERE id=?", [id]);
-    if (res.changed === 0) throw new Error("This occasion could not be deleted.");
+    if (res.changed === 0) throw new Error(refused = "This occasion could not be deleted.");
     await syncCalendar();
     showNotice("Occasion deleted.");
   } catch (e) {
     occasions = prev;
-    showError(e.message);
+    if (!refused) console.error(e);
+    showError(refused ?? "Couldn’t delete the occasion — try again.");
   }
 }
 
@@ -737,7 +735,19 @@ function submitEditor(existingId, carry = {}) {
     source: carry.source ?? "manual",
     source_ref: carry.source_ref ?? "",
   };
-  saveOccasion(fields, existingId).catch((e) => showError(e.message));
+  const form = modalEl;
+  form?.querySelector(".error")?.remove();
+  saveOccasion(fields, existingId).catch(() => {
+    // Refused: the editor is still open as typed. Say so there and give the
+    // button back.
+    if (!form || modalEl !== form) { showError("Couldn’t save the occasion — try again."); return; }
+    if (btn) { btn.disabled = false; btn.textContent = existingId ? "Save" : "Add"; }
+    const line = document.createElement("div");
+    line.className = "error";
+    line.setAttribute("role", "alert");
+    line.textContent = "Couldn’t save — try again.";
+    form.querySelector(".modal-actions").before(line);
+  });
 }
 
 function addFromSuggestion(key) {
@@ -759,7 +769,7 @@ function addFromSuggestion(key) {
     countdown: 0,
     source: "contacts",
     source_ref: s.contactId,
-  }, null).then(() => showNotice(`Added ${s.name}.`)).catch((e) => showError(e.message));
+  }, null).then(() => showNotice(`Added ${s.name}.`)).catch(() => showError(`Couldn’t add ${s.name} — try again.`));
 }
 
 /* ── Events ────────────────────────────────────────────────────────────────── */
