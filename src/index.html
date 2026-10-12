@@ -130,6 +130,8 @@
       background: var(--surface, var(--card, #fff)); color: var(--text, inherit);
     }
     .search-input:focus { outline: none; border-color: var(--accent, #6366f1); }
+    .load-error { margin: 0 0 12px; padding: 10px 14px; border-radius: 10px; background: var(--hub-tint-danger, #fee2e2); color: var(--hub-tint-danger-fg, #b91c1c); font-size: 0.9rem; display: flex; gap: 10px; align-items: center; justify-content: space-between; }
+    .load-error-retry { background: none; border: 1px solid currentColor; border-radius: 8px; padding: 5px 10px; font: inherit; font-weight: 600; color: inherit; cursor: pointer; flex-shrink: 0; }
   </style>
   <base href="/run/occasions/">
 </head>
@@ -183,8 +185,8 @@ async function db(sql, params = []) {
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify({ sql, params }),
   });
-  const json = await res.json();
-  if (json.error) throw new Error(json.error);
+  const json = await res.json().catch(() => null);
+  if (!res.ok || !json || typeof json !== "object" || json.error) throw new Error(json?.error || "Couldn’t reach the hub. Try again.");
   return json;
 }
 
@@ -213,10 +215,14 @@ async function loadMembers() {
       { id: "demo-3", name: "Casey", role: "child" },
     ];
   } else {
-    try {
-      const res = await fetch(`${CONTEXT}?keys=family.members`);
-      members = ((await res.json())["family.members"]) ?? [];
-    } catch { members = []; }
+    // Throws when the members cannot be read, so refresh() shows the banner
+    // rather than occasions that belong to nobody.
+    const res = await fetch(`${CONTEXT}?keys=family.members`);
+    const json = await res.json().catch(() => null);
+    if (!res.ok || !json || typeof json !== "object" || json.error) throw new Error("Couldn’t reach the hub. Try again.");
+    // A 200 can still name a key the hub failed to read: that is a failed read too.
+    if (Array.isArray(json.$errors) && json.$errors.includes("family.members")) throw new Error("Couldn’t reach the hub. Try again.");
+    members = json["family.members"] ?? [];
   }
   memberMap = new Map(members.map((m) => [m.id, m]));
   me = HUB_MEMBER ?? members[0] ?? { id: "guest", name: "Guest", role: "adult" };
@@ -262,17 +268,23 @@ async function loadReminderStatus() {
   if (!DB) return;
   try {
     const res = await fetch("api/reminders-status");
-    if (res.ok) reminderStatus = await res.json();
+    const body = res.ok ? await res.json() : null;
+    // An answer that is not the status says nothing about the plan.
+    if (body && typeof body === "object" && !body.error) reminderStatus = body;
   } catch { /* hub without the protocol — leave null, UI stays quiet */ }
 }
 
+// True from a failed first load until a load succeeds. While it is, the page
+// shows the banner in place of the lists and offers no "+ Add".
+let loadFailed = false;
 async function refresh() {
   clearMessages();
   try {
     await Promise.all([loadMembers(), loadOccasions(), loadContactDates(), loadReminderStatus()]);
+    loadFailed = false;
     render();
-  } catch (e) {
-    error = e.message;
+  } catch {
+    loadFailed = true;
     render();
   }
 }
@@ -323,12 +335,15 @@ async function saveOccasion(fields, existingId) {
     closeModal();
     render();
     try {
-      await db(
+      const res = await db(
         `UPDATE app_occasions__occasions
          SET kind=?, title=?, event_month=?, event_day=?, event_year=?, visibility=?, notes=?, gift_idea=?, lead_days=?, remind=?, emoji=?, countdown=?, updated_at=?
          WHERE id=?`,
         [fields.kind, fields.title, fields.event_month, fields.event_day, fields.event_year, fields.visibility, fields.notes, fields.gift_idea, fields.lead_days, fields.remind, fields.emoji, fields.countdown, now, existingId],
       );
+      // The hub answers 200 with nothing changed when the row is not this
+      // member's to edit, or is gone.
+      if (res.changed === 0) throw new Error("This occasion can no longer be changed.");
       await syncCalendar();
     } catch (e) {
       if (idx !== -1 && prev) occasions[idx] = prev;
@@ -381,7 +396,8 @@ async function deleteOccasion(id) {
   closeModal();
   render();
   try {
-    await db("DELETE FROM app_occasions__occasions WHERE id=?", [id]);
+    const res = await db("DELETE FROM app_occasions__occasions WHERE id=?", [id]);
+    if (res.changed === 0) throw new Error("This occasion could not be deleted.");
     await syncCalendar();
     showNotice("Occasion deleted.");
   } catch (e) {
@@ -503,6 +519,17 @@ document.addEventListener("input", (e) => {
 function render() {
   const root = document.getElementById("root");
   root.className = "app-root";
+  if (loadFailed) {
+    root.innerHTML = `
+    <div class="topbar">
+      <div>
+        <h1>Occasions</h1>
+        <p class="muted tiny">The dates your household doesn't want to miss.</p>
+      </div>
+    </div>
+    <div class="load-error" data-testid="load-error" role="alert"><span>Couldn’t load your occasions.</span> <button type="button" class="load-error-retry" data-testid="load-retry">Try again</button></div>`;
+    return;
+  }
   const list = upcoming(occasions, hubDay());
   root.innerHTML = `
     <div class="topbar">
@@ -743,6 +770,7 @@ document.addEventListener("click", (e) => {
   if (summary) { passedOpen = !summary.parentElement.open; return; }
   const t = e.target.closest("button");
   if (!t) return;
+  if (t.matches('[data-testid="load-retry"]')) { refresh(); return; }
   if (t.hasAttribute("data-add")) { openEditor(null); return; }
   if (t.hasAttribute("data-edit")) { openEditor(occasions.find((o) => o.id === t.getAttribute("data-edit"))); return; }
   if (t.hasAttribute("data-cancel")) { closeModal(); return; }
