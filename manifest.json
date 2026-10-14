@@ -117,9 +117,6 @@
       }
     }
   ],
-  "exports": [
-    "calendar_events"
-  ],
   "publishes": [
     "occasion.created"
   ],
@@ -147,7 +144,11 @@
         "everyone"
       ],
       "write_visibility_scoped": true,
-      "delete_adult_only": true
+      "delete_adult_only": true,
+      "column_write_acls": {
+        "member_id": { "writable_by": [], "actions": ["update"] },
+        "visibility": { "writable_by": ["owner"], "actions": ["update"] }
+      }
     }
   },
   "delete_file_columns": {
@@ -189,12 +190,13 @@
     "everyone_values": [
       "everyone"
     ],
-    "last_reminded_column": "last_reminded_at"
+    "last_reminded_column": "last_reminded_at",
+    "calendar": true
   },
   "glance": {
     "source": {
       "kind": "sql",
-      "query": "SELECT title AS title, emoji AS emoji, member_id AS member_id, CASE WHEN kind = 'milestone' THEN printf('%04d-%02d-%02d', event_year, event_month, event_day) WHEN printf('%02d-%02d', event_month, event_day) >= substr(:today, 6, 5) THEN printf('%04d-%02d-%02d', CAST(substr(:today, 1, 4) AS INTEGER), event_month, event_day) ELSE printf('%04d-%02d-%02d', CAST(substr(:today, 1, 4) AS INTEGER) + 1, event_month, event_day) END AS at FROM app_occasions__occasions WHERE countdown = 1 AND visibility = 'everyone' AND (kind <> 'milestone' OR (event_year IS NOT NULL AND printf('%04d-%02d-%02d', event_year, event_month, event_day) >= :today)) ORDER BY at LIMIT 3"
+      "query": "SELECT title AS title, emoji AS emoji, member_id AS member_id, CASE WHEN kind = 'milestone' THEN printf('%04d-%02d-%02d', event_year, event_month, event_day) WHEN (CASE WHEN strftime('%m', date(printf('%04d-%02d-01', CAST(substr(:today, 1, 4) AS INTEGER), event_month), '+' || (event_day - 1) || ' days')) = printf('%02d', event_month) THEN date(printf('%04d-%02d-01', CAST(substr(:today, 1, 4) AS INTEGER), event_month), '+' || (event_day - 1) || ' days') ELSE date(printf('%04d-%02d-01', CAST(substr(:today, 1, 4) AS INTEGER), event_month), '+1 month', '-1 day') END) >= :today THEN (CASE WHEN strftime('%m', date(printf('%04d-%02d-01', CAST(substr(:today, 1, 4) AS INTEGER), event_month), '+' || (event_day - 1) || ' days')) = printf('%02d', event_month) THEN date(printf('%04d-%02d-01', CAST(substr(:today, 1, 4) AS INTEGER), event_month), '+' || (event_day - 1) || ' days') ELSE date(printf('%04d-%02d-01', CAST(substr(:today, 1, 4) AS INTEGER), event_month), '+1 month', '-1 day') END) ELSE (CASE WHEN strftime('%m', date(printf('%04d-%02d-01', CAST(substr(:today, 1, 4) AS INTEGER) + 1, event_month), '+' || (event_day - 1) || ' days')) = printf('%02d', event_month) THEN date(printf('%04d-%02d-01', CAST(substr(:today, 1, 4) AS INTEGER) + 1, event_month), '+' || (event_day - 1) || ' days') ELSE date(printf('%04d-%02d-01', CAST(substr(:today, 1, 4) AS INTEGER) + 1, event_month), '+1 month', '-1 day') END) END AS at FROM app_occasions__occasions WHERE countdown = 1 AND visibility = 'everyone' AND (kind <> 'milestone' OR (event_year IS NOT NULL AND printf('%04d-%02d-%02d', event_year, event_month, event_day) >= :today)) ORDER BY at LIMIT 3"
     },
     "display": {
       "template": "list",
@@ -210,7 +212,7 @@
     "label": "Occasion",
     "source": {
       "kind": "sql",
-      "query": "SELECT id AS id, title AS title, :today AS when_at FROM app_occasions__occasions WHERE event_month = CAST(strftime('%m', :today) AS INTEGER) AND event_day = CAST(strftime('%d', :today) AS INTEGER) AND (kind <> 'milestone' OR event_year = CAST(strftime('%Y', :today) AS INTEGER)) LIMIT 20"
+      "query": "SELECT id AS id, title AS title, :today AS when_at FROM app_occasions__occasions WHERE event_month = CAST(strftime('%m', :today) AS INTEGER) AND (event_day = CAST(strftime('%d', :today) AS INTEGER) OR (event_month = 2 AND event_day = 29 AND strftime('%m-%d', :today) = '02-28' AND strftime('%m-%d', :today, '+1 day') = '03-01')) AND (kind <> 'milestone' OR event_year = CAST(strftime('%Y', :today) AS INTEGER)) LIMIT 20"
     }
   },
   "nav": {

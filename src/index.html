@@ -153,12 +153,11 @@ const hubDay = () => new Date(`${hubToday()}T12:00:00`);
 
 import {
   KINDS, kindMeta, upcoming, passedMilestones, countdownLabel, contactSuggestions,
-  daysInMonth, MILESTONE_KIND, searchableFields, buildCalendarEvents,
+  daysInMonth, MILESTONE_KIND, searchableFields,
 } from "./logic.js";
 
 const CONTEXT = window.__CONTEXT_URL ?? "";
 const DB = window.__DB_URL ?? "";
-const STORE_URL = window.__STORE_URL ?? "";
 const HUB_MEMBER = window.__CURRENT_MEMBER ?? null;
 const EVENTS = window.__EVENTS_URL ?? "";
 
@@ -293,50 +292,39 @@ function clearMessages() { error = ""; notice = ""; }
 function showError(msg) { error = msg; notice = ""; render(); }
 function showNotice(msg) { notice = msg; error = ""; render(); }
 
-/**
- * Republish the `calendar_events` export so shared occasions show up on the
- * household calendar and in the ICS feed. Best-effort and unable to reject: a
- * failed sync must never roll back an occasion the member just saved, and the
- * next mutation republishes the whole payload anyway.
- *
- * This runs after every mutation, a visibility change included — flipping a row
- * to "private" is exactly the edit that must REMOVE its calendar entry, and the
- * payload is rebuilt whole each time, so the removal happens for free.
- *
- * There is deliberately NO `store_acls` entry for this key. Occasions is
- * member-writable by design — the row policy is `owner_or_visibility` with
- * `write_visibility_scoped`, so every member owns and edits their own rows, and
- * every one of those paths lands here. The hub only accepts
- * `require_role: "adult"` in a store ACL, so the only gate available would mean
- * a member's own birthday never reaches the calendar until an adult happened to
- * mutate something — and because this POST is best-effort, that failure would
- * be completely silent. The tradeoff: unguarded, a member can POST arbitrary
- * JSON to the key, but the blob is rebuilt from the database on the very next
- * mutation, and that member can already create a real occasion with any title
- * that everyone sees. Small exposure, next to a broken feature.
- */
-async function syncCalendar() {
-  if (!STORE_URL || !DB) return;
-  const events = buildCalendarEvents(occasions, hubToday());
-  await fetch(STORE_URL, {
-    method: "POST",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ key: "calendar_events", value: JSON.stringify(events) }),
-  }).catch(() => {});
-}
+// The household calendar and the ICS feed are the hub's job: the manifest's
+// `date_reminders.calendar` has it project every shared occasion from the
+// table on each read, so an edit, an automation's insert, a member's removal
+// and a passing year all reach the calendar with no sync from this page.
+// (Until 2026-10 the page rebuilt a `calendar_events` store blob after each
+// save — a tab holding stale rows could republish an occasion its owner had
+// since made private, and a birthday kept last year's date until somebody
+// edited something.)
 
 /* ── Mutations ─────────────────────────────────────────────────────────────── */
 // The write goes first: the editor stays open until the hub has the occasion,
 // and a refused write throws to the caller — the editor says so in the form and
 // leaves what was typed in place. Nothing is drawn for a row the hub never got.
+/** Whether this member decides who sees an occasion: its owner, or anyone
+ *  adding a new one. "Private" means the OWNER alone, so anyone else ticking
+ *  it would hide the occasion from themselves and everyone else. */
+function ownsOccasion(o) { return !o || o.member_id === me?.id; }
+
 async function saveOccasion(fields, existingId) {
   const now = nowIso();
   if (existingId) {
+    // Who sees an occasion is its owner's choice alone (manifest:
+    // column_write_acls.visibility, writable_by ["owner"]). Named in anyone
+    // else's UPDATE the column would make the hub change no row at all, so
+    // their edit leaves it out and keeps what is stored.
+    const stored = occasions.find((o) => o.id === existingId);
+    const owns = ownsOccasion(stored);
+    if (!owns) fields = { ...fields, visibility: stored?.visibility ?? "everyone" };
     const res = await db(
       `UPDATE app_occasions__occasions
-       SET kind=?, title=?, event_month=?, event_day=?, event_year=?, visibility=?, notes=?, gift_idea=?, lead_days=?, remind=?, emoji=?, countdown=?, updated_at=?
+       SET kind=?, title=?, event_month=?, event_day=?, event_year=?, ${owns ? "visibility=?, " : ""}notes=?, gift_idea=?, lead_days=?, remind=?, emoji=?, countdown=?, updated_at=?
        WHERE id=?`,
-      [fields.kind, fields.title, fields.event_month, fields.event_day, fields.event_year, fields.visibility, fields.notes, fields.gift_idea, fields.lead_days, fields.remind, fields.emoji, fields.countdown, now, existingId],
+      [fields.kind, fields.title, fields.event_month, fields.event_day, fields.event_year, ...(owns ? [fields.visibility] : []), fields.notes, fields.gift_idea, fields.lead_days, fields.remind, fields.emoji, fields.countdown, now, existingId],
     );
     // The hub answers 200 with nothing changed when the row is not this
     // member's to edit, or is gone. Trying again cannot help: close and say why.
@@ -349,7 +337,6 @@ async function saveOccasion(fields, existingId) {
     if (idx !== -1) occasions[idx] = { ...occasions[idx], ...fields, updated_at: now };
     closeModal();
     render();
-    await syncCalendar();
   } else {
     const row = {
       id: crypto.randomUUID(),
@@ -368,7 +355,6 @@ async function saveOccasion(fields, existingId) {
     occasions = [...occasions, row];
     closeModal();
     render();
-    await syncCalendar();
     // Only shared occasions reach the bus: a private row is the owner's alone
     // (a surprise-gift reminder), and every member with this app can read the
     // event feed.
@@ -395,7 +381,6 @@ async function deleteOccasion(id) {
   try {
     const res = await db("DELETE FROM app_occasions__occasions WHERE id=?", [id]);
     if (res.changed === 0) throw new Error(refused = "This occasion could not be deleted.");
-    await syncCalendar();
     showNotice("Occasion deleted.");
   } catch (e) {
     occasions = prev;
@@ -638,8 +623,10 @@ function openEditor(existing) {
         <textarea id="f-notes" placeholder="Anything worth remembering">${esc(o?.notes ?? "")}</textarea>
       </div>
       <div class="checkrow">
-        <input type="checkbox" id="f-private" ${o?.visibility === "private" ? "checked" : ""} />
-        <label for="f-private">Keep private (only you can see this — e.g. a surprise gift)</label>
+        <input type="checkbox" id="f-private" data-testid="field-private" ${o?.visibility === "private" ? "checked" : ""} ${ownsOccasion(o) ? "" : "disabled"} />
+        <label for="f-private">${ownsOccasion(o)
+          ? "Keep private (only you can see this — e.g. a surprise gift)"
+          : `Keep private (only ${esc(memberName(o.member_id))} can change this)`}</label>
       </div>
       <div class="checkrow">
         <input type="checkbox" id="f-countdown" ${Number(o?.countdown) === 1 ? "checked" : ""} />
@@ -686,7 +673,23 @@ function openEditor(existing) {
   syncEditor();
 }
 
+// A message about the form goes IN the form. The page's own banner is drawn
+// under the open dialog, where nobody sees it.
+function editorError(msg, focusId) {
+  const form = modalEl;
+  if (!form) { showError(msg); return; }
+  form.querySelector(".error")?.remove();
+  const line = document.createElement("div");
+  line.className = "error";
+  line.dataset.testid = "editor-error";
+  line.setAttribute("role", "alert");
+  line.textContent = msg;
+  form.querySelector(".modal-actions").before(line);
+  if (focusId) document.getElementById(focusId)?.focus();
+}
+
 function submitEditor(existingId, carry = {}) {
+  modalEl?.querySelector(".error")?.remove();
   const title = document.getElementById("f-title").value.trim();
   const kind = document.getElementById("f-kind").value;
   const dateStr = document.getElementById("f-date").value;
@@ -704,14 +707,13 @@ function submitEditor(existingId, carry = {}) {
   const leadDays = Number.isFinite(leadRaw) && leadRaw >= 0 ? leadRaw : 3;
 
   const m = /^(\d{4})-(\d{2})-(\d{2})$/.exec(dateStr);
-  if (!m) { showError("Pick a valid date."); document.getElementById("f-date").focus(); return; }
-  if (!title) { document.getElementById("f-title").focus(); return; }
+  if (!title) { editorError("Say who or what this is for.", "f-title"); return; }
+  if (!m) { editorError("Pick a valid date.", "f-date"); return; }
   const milestone = kind === MILESTONE_KIND;
   // A one-off date in the past would count down to nothing. Only block on
   // create — an existing milestone is allowed to age into the Passed section.
   if (milestone && !existingId && dateStr < hubToday()) {
-    showError("A countdown needs a date in the future.");
-    document.getElementById("f-date").focus();
+    editorError("A countdown needs a date in the future.", "f-date");
     return;
   }
 
@@ -736,17 +738,12 @@ function submitEditor(existingId, carry = {}) {
     source_ref: carry.source_ref ?? "",
   };
   const form = modalEl;
-  form?.querySelector(".error")?.remove();
   saveOccasion(fields, existingId).catch(() => {
     // Refused: the editor is still open as typed. Say so there and give the
     // button back.
     if (!form || modalEl !== form) { showError("Couldn’t save the occasion — try again."); return; }
     if (btn) { btn.disabled = false; btn.textContent = existingId ? "Save" : "Add"; }
-    const line = document.createElement("div");
-    line.className = "error";
-    line.setAttribute("role", "alert");
-    line.textContent = "Couldn’t save — try again.";
-    form.querySelector(".modal-actions").before(line);
+    editorError("Couldn’t save — try again.");
   });
 }
 

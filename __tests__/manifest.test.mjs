@@ -47,6 +47,22 @@ describe("manifest.json", () => {
     expect(p?.write_visibility_scoped).toBe(true);
   });
 
+  it("lets only an occasion's owner change who sees it, and nobody change whose it is", () => {
+    // write_visibility_scoped lets every member UPDATE a shared occasion.
+    // Without these, any of them could mark someone else's private (hiding it
+    // from everyone but its owner) or move it to themselves first.
+    const p = manifest.row_policies?.occasions;
+    expect(p?.column_write_acls).toEqual({
+      member_id: { writable_by: [], actions: ["update"] },
+      visibility: { writable_by: ["owner"], actions: ["update"] },
+    });
+    const html = readFileSync(join(__dirname, "../src/index.html"), "utf-8");
+    // The page leaves the column out of an edit to someone else's occasion, or
+    // the hub's owner guard would drop the whole edit, and stops offering it.
+    expect(html).toContain('${owns ? "visibility=?, " : ""}notes=?');
+    expect(html).toContain('${ownsOccasion(o) ? "" : "disabled"}');
+  });
+
   // Member removal, in two halves — the split matters and neither whole-table
   // action is right:
   //
@@ -73,34 +89,46 @@ describe("manifest.json", () => {
     });
   });
 
-  // The hub filters cross-app calendar sources on `manifest.exports`, so
-  // dropping this key does not error anywhere — it silently empties the app's
-  // contribution to the household calendar and the ICS feed.
-  it("declares the calendar_events export", () => {
-    expect(manifest.exports).toContain("calendar_events");
+  // The household calendar and the ICS feed come from the hub's own
+  // projection of the occasions table (date_reminders.calendar), never from a
+  // `calendar_events` blob this page writes. The blob had three faults no page
+  // code could close: a tab holding stale rows republished an occasion its
+  // owner had since made private; a birthday kept last year's date until
+  // somebody edited the app; and a row an automation inserted, or member
+  // removal deleted, never reached or left the calendar. Do not bring the
+  // export back.
+  it("puts shared occasions on the calendar through date_reminders.calendar, not an export", () => {
+    expect(manifest.date_reminders.calendar).toBe(true);
+    expect(manifest.exports ?? []).not.toContain("calendar_events");
+    expect(manifest.store_acls?.calendar_events).toBeUndefined();
+    const html = readFileSync(join(__dirname, "../src/index.html"), "utf-8");
+    expect(html).not.toMatch(/key:\s*"calendar_events"/);
+    expect(html).not.toContain("__STORE_URL");
   });
 
-  // Deliberately NO store_acl on calendar_events. Do not "harden" this by
-  // adding one — it would break the feature for exactly the members it exists
-  // to serve.
-  //
-  // Occasions is member-writable by design: the row policy is
-  // `owner_or_visibility` with `write_visibility_scoped`, so every member owns
-  // and edits their own occasions. The store key is written by syncCalendar()
-  // on the same paths. The hub only accepts `require_role: "adult"` here —
-  // `validateStoreAccessRule` rejects every other value — so there is no
-  // weaker role to declare, and an adult gate would mean a member's own
-  // birthday never reaches the calendar until an adult happens to mutate
-  // something. Worse, the POST is best-effort, so that failure is invisible.
-  //
-  // The tradeoff, stated plainly: with no ACL a member can POST arbitrary JSON
-  // straight to the key. But the blob is rebuilt from the database on the next
-  // mutation, and that same member can already create a real occasion with any
-  // title that everyone sees. The marginal exposure is small next to the
-  // feature the gate would break. Absence is the correct expression of "any
-  // member may write this key".
-  it("leaves the calendar_events store key member-writable", () => {
-    expect(manifest.store_acls?.calendar_events).toBeUndefined();
+  // The hub's projection keeps a private occasion off the calendar by the
+  // same column and values the email cron uses; the row policy's are the same
+  // two, so "private" means the same thing on every surface.
+  it("names the same visibility column and shared value for reminders and the row policy", () => {
+    const d = manifest.date_reminders;
+    const p = manifest.row_policies.occasions;
+    expect(d.visibility_column).toBe(p.visibility_column);
+    expect(d.everyone_values).toEqual(p.everyone_values);
+  });
+
+  // The page banner is drawn under the open dialog. Anything the editor has to
+  // say about what was typed goes through editorError, into the form itself —
+  // and an empty title says so rather than just moving the cursor.
+  it("reports every editor validation message inside the dialog", () => {
+    const html = readFileSync(join(__dirname, "../src/index.html"), "utf-8");
+    const submit = html.slice(html.indexOf("function submitEditor("), html.indexOf("function addFromSuggestion("));
+    for (const msg of ["Say who or what this is for.", "Pick a valid date.", "A countdown needs a date in the future."]) {
+      expect(submit).toContain(`editorError("${msg}"`);
+    }
+    // Its one showError is the fallback for a save that failed after the
+    // dialog was already closed, where the banner IS visible.
+    expect(submit.match(/showError\(/g)).toHaveLength(1);
+    expect(submit).toContain("if (!form || modalEl !== form) { showError(");
   });
 
   it("only ever writes the two visibility values only_when relies on", () => {
