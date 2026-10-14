@@ -280,3 +280,22 @@ export function contactSuggestions(contactDates, existing) {
 export function searchableFields(item) {
   return [item.title, item.notes, item.gift_idea, item.kind];
 }
+
+/**
+ * The line for a failed write ("Refused, gone, or failed: which line" in the
+ * app template). "Try again" only when retrying can work; the hub's own text is
+ * never returned. `found` is the caller's re-read after a write that changed
+ * nothing: false → removed, true → the hub narrowed a plain `WHERE id = ?` write
+ * away from this member (permission), undefined → the re-read failed or there
+ * was none.
+ */
+export function failureLine(e, { action, thing, found } = {}) {
+  if (e?.forUser) return e.message;
+  if (e?.code === "UNIQUE_CONSTRAINT" || /UNIQUE constraint failed/i.test(String(e?.message ?? ""))) return `That ${thing} already exists.`;
+  if (e?.status === 403) return `You don’t have permission to ${action}.`;
+  if (e?.status === 507) return "The household’s storage is full — free up space first.";
+  if (found === false || (found === undefined && e?.status === 404)) return `This ${thing} has been removed.`;
+  if (found === true) return `You don’t have permission to ${action}.`;
+  if (e?.status === 409) return `This ${thing} was changed by someone else — check it first.`;
+  return `Couldn’t ${action} — try again.`;
+}

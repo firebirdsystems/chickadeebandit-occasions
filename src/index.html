@@ -153,7 +153,7 @@ const hubDay = () => new Date(`${hubToday()}T12:00:00`);
 
 import {
   KINDS, kindMeta, upcoming, passedMilestones, countdownLabel, contactSuggestions,
-  daysInMonth, MILESTONE_KIND, searchableFields,
+  daysInMonth, MILESTONE_KIND, searchableFields, failureLine,
 } from "./logic.js";
 
 const CONTEXT = window.__CONTEXT_URL ?? "";
@@ -185,8 +185,23 @@ async function db(sql, params = []) {
     body: JSON.stringify({ sql, params }),
   });
   const json = await res.json().catch(() => null);
-  if (!res.ok || !json || typeof json !== "object" || json.error) throw new Error(json?.error || "Couldn’t reach the hub. Try again.");
+  if (!res.ok || !json || typeof json !== "object" || json.error) {
+    // status/code pick the line (failureLine); the text is for console.error only.
+    throw Object.assign(new Error(json?.error || "Couldn’t reach the hub. Try again."), { status: res.status, code: json?.code });
+  }
   return json;
+}
+
+/** Re-read after a write that changed nothing: true stored, false gone,
+ *  undefined when the read itself failed. */
+async function occasionStored(id) {
+  try {
+    const res = await db("SELECT id FROM app_occasions__occasions WHERE id=?", [id]);
+    return (res.rows ?? []).length > 0;
+  } catch (e) {
+    console.error("re-read occasion failed", e);
+    return undefined;
+  }
 }
 
 /* ── Event bus ─────────────────────────────────────────────────────────────── */
@@ -312,6 +327,10 @@ function ownsOccasion(o) { return !o || o.member_id === me?.id; }
 
 async function saveOccasion(fields, existingId) {
   const now = nowIso();
+  // The editor that submitted, if any: success closes only that one, never a
+  // dialog opened while the write was in flight.
+  const form = modalEl;
+  const closeForm = () => { if (form && modalEl === form) closeModal(); };
   if (existingId) {
     // Who sees an occasion is its owner's choice alone (manifest:
     // column_write_acls.visibility, writable_by ["owner"]). Named in anyone
@@ -327,15 +346,21 @@ async function saveOccasion(fields, existingId) {
       [fields.kind, fields.title, fields.event_month, fields.event_day, fields.event_year, ...(owns ? [fields.visibility] : []), fields.notes, fields.gift_idea, fields.lead_days, fields.remind, fields.emoji, fields.countdown, now, existingId],
     );
     // The hub answers 200 with nothing changed when the row is not this
-    // member's to edit, or is gone. Trying again cannot help: close and say why.
+    // member's to edit, or is gone. A re-read tells which; trying again cannot
+    // help either, so close and say why. If the re-read failed nothing is
+    // known: throw, and the editor stays open as typed with "try again".
     if (res.changed === 0) {
-      closeModal();
-      showError("This occasion can no longer be changed.");
+      const found = await occasionStored(existingId);
+      const line = failureLine(null, { action: "edit this occasion", thing: "occasion", found });
+      if (found === undefined) throw Object.assign(new Error(line), { forUser: true });
+      if (found === false) occasions = occasions.filter((o) => o.id !== existingId);
+      closeForm();
+      showError(line);
       return;
     }
     const idx = occasions.findIndex((o) => o.id === existingId);
     if (idx !== -1) occasions[idx] = { ...occasions[idx], ...fields, updated_at: now };
-    closeModal();
+    closeForm();
     render();
   } else {
     const row = {
@@ -353,7 +378,7 @@ async function saveOccasion(fields, existingId) {
       [row.id, row.member_id, row.kind, row.title, row.event_month, row.event_day, row.event_year, row.visibility, row.notes, row.gift_idea, row.lead_days, row.remind, row.source, row.source_ref, row.emoji, row.countdown, now, now],
     );
     occasions = [...occasions, row];
-    closeModal();
+    closeForm();
     render();
     // Only shared occasions reach the bus: a private row is the owner's alone
     // (a surprise-gift reminder), and every member with this app can read the
@@ -377,15 +402,21 @@ async function deleteOccasion(id) {
   occasions = occasions.filter((o) => o.id !== id);
   closeModal();
   render();
-  let refused = null;
+  const words = { action: "delete this occasion", thing: "occasion" };
   try {
     const res = await db("DELETE FROM app_occasions__occasions WHERE id=?", [id]);
-    if (res.changed === 0) throw new Error(refused = "This occasion could not be deleted.");
+    if (res.changed === 0) {
+      // Gone already, or narrowed away from this member: the re-read tells which.
+      const found = await occasionStored(id);
+      if (found !== false) occasions = prev;
+      showError(failureLine(null, { ...words, found }));
+      return;
+    }
     showNotice("Occasion deleted.");
   } catch (e) {
     occasions = prev;
-    if (!refused) console.error(e);
-    showError(refused ?? "Couldn’t delete the occasion — try again.");
+    console.error("delete occasion failed", e);
+    showError(failureLine(e, words));
   }
 }
 
@@ -738,12 +769,14 @@ function submitEditor(existingId, carry = {}) {
     source_ref: carry.source_ref ?? "",
   };
   const form = modalEl;
-  saveOccasion(fields, existingId).catch(() => {
+  saveOccasion(fields, existingId).catch((e) => {
     // Refused: the editor is still open as typed. Say so there and give the
     // button back.
-    if (!form || modalEl !== form) { showError("Couldn’t save the occasion — try again."); return; }
+    if (!e?.forUser) console.error("save occasion failed", e);
+    const line = failureLine(e, { action: existingId ? "edit this occasion" : "add the occasion", thing: "occasion" });
+    if (!form || modalEl !== form) { showError(line); return; }
     if (btn) { btn.disabled = false; btn.textContent = existingId ? "Save" : "Add"; }
-    editorError("Couldn’t save — try again.");
+    editorError(line);
   });
 }
 
@@ -766,7 +799,10 @@ function addFromSuggestion(key) {
     countdown: 0,
     source: "contacts",
     source_ref: s.contactId,
-  }, null).then(() => showNotice(`Added ${s.name}.`)).catch(() => showError(`Couldn’t add ${s.name} — try again.`));
+  }, null).then(() => showNotice(`Added ${s.name}.`)).catch((e) => {
+    console.error("add suggested occasion failed", e);
+    showError(failureLine(e, { action: `add ${s.name}`, thing: "occasion" }));
+  });
 }
 
 /* ── Events ────────────────────────────────────────────────────────────────── */
