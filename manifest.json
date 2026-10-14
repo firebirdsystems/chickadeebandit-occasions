@@ -151,10 +151,8 @@
       }
     }
   },
-  "delete_file_columns": {
-    "occasions": [
-      "photo_file_id"
-    ]
+  "file_columns": {
+    "occasions": { "columns": ["photo_file_id"] }
   },
   "member_references": {
     "occasions": {
@@ -217,9 +215,6 @@
   },
   "nav": {
     "label": "Occasions"
-  },
-  "resource_limits": {
-    "max_db_bytes": 52428800
   },
   "ai_access": {
     "allowed": true,
