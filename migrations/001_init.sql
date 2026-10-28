@@ -25,7 +25,7 @@
 -- email nudge would fire). It has no effect today — the reminder cron
 -- is a follow-up — but is stored per-row so that wiring is drop-in later.
 CREATE TABLE IF NOT EXISTS app_occasions__occasions (
-  id          TEXT    PRIMARY KEY,
+  id          TEXT    NOT NULL PRIMARY KEY,
   member_id   TEXT    NOT NULL,                      -- owner (creator)
   kind        TEXT    NOT NULL DEFAULT 'birthday',   -- birthday|anniversary|memorial|holiday|gift|other
   title       TEXT    NOT NULL DEFAULT '',           -- who/what, e.g. "Mom" or "Our Anniversary"
